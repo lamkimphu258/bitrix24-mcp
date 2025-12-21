@@ -1,0 +1,277 @@
+"""Tests for MCP tools."""
+
+import pytest
+import respx
+from httpx import Response
+
+from bitrix_mcp.bitrix.client import Bitrix24Client
+from bitrix_mcp.tools import tasks
+from bitrix_mcp.tools.tasks import task_search, task_get, task_create
+
+
+@pytest.fixture
+def setup_client(mock_webhook_url, mock_bitrix_api):
+    """Set up Bitrix24 client for tools."""
+    client = Bitrix24Client(webhook_url=mock_webhook_url)
+    tasks.set_client(client)
+    yield client
+
+
+class TestTaskSearch:
+    """Tests for task_search tool."""
+
+    @pytest.mark.asyncio
+    async def test_task_search_basic(
+        self, setup_client, sample_task_list_response, mock_bitrix_api
+    ):
+        """task_search should return formatted results."""
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_response)
+        )
+
+        results = await task_search(query="welcome email")
+
+        assert len(results) == 2
+        assert results[0]["id"] == 456
+        assert results[0]["title"] == "Auto Send welcome email"
+        assert results[0]["responsibleId"] == 7
+        assert results[0]["groupId"] == 5
+        assert results[0]["status"] == "pending"
+
+    @pytest.mark.asyncio
+    async def test_task_search_with_limit(
+        self, setup_client, sample_task_list_response, mock_bitrix_api
+    ):
+        """task_search should pass limit parameter."""
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_response)
+        )
+
+        await task_search(query="test", limit=5)
+
+        import json
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["limit"] == 5
+
+    @pytest.mark.asyncio
+    async def test_task_search_no_results(self, setup_client, mock_bitrix_api):
+        """task_search should handle empty results."""
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json={"result": {"tasks": []}})
+        )
+
+        results = await task_search(query="nonexistent task xyz")
+
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_task_search_status_mapping(self, setup_client, mock_bitrix_api):
+        """task_search should map status codes to strings."""
+        response = {
+            "result": {
+                "tasks": [
+                    {"id": "1", "title": "Pending", "responsibleId": "1", "groupId": "1", "status": "2"},
+                    {"id": "2", "title": "In Progress", "responsibleId": "1", "groupId": "1", "status": "3"},
+                    {"id": "3", "title": "Completed", "responsibleId": "1", "groupId": "1", "status": "5"},
+                ]
+            }
+        }
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=response)
+        )
+
+        results = await task_search(query="test")
+
+        assert results[0]["status"] == "pending"
+        assert results[1]["status"] == "in_progress"
+        assert results[2]["status"] == "completed"
+
+
+class TestTaskGet:
+    """Tests for task_get tool."""
+
+    @pytest.mark.asyncio
+    async def test_task_get_basic(
+        self, setup_client, sample_task_get_response, mock_bitrix_api
+    ):
+        """task_get should return full task details."""
+        mock_bitrix_api.post("tasks.task.get").mock(
+            return_value=Response(200, json=sample_task_get_response)
+        )
+
+        result = await task_get(id=456)
+
+        assert result["id"] == 456
+        assert result["title"] == "Auto Send welcome email"
+        assert result["description"] == "Any new sign up user, send welcome email."
+        assert result["responsibleId"] == 7
+        assert result["groupId"] == 5
+        assert result["status"] == "pending"
+        assert result["priority"] == "medium"
+
+    @pytest.mark.asyncio
+    async def test_task_get_with_description(
+        self, setup_client, sample_task_get_response, mock_bitrix_api
+    ):
+        """task_get should include description for AI analysis."""
+        mock_bitrix_api.post("tasks.task.get").mock(
+            return_value=Response(200, json=sample_task_get_response)
+        )
+
+        result = await task_get(id=456)
+
+        # Description is the key field for AI to analyze
+        assert "description" in result
+        assert result["description"] is not None
+        assert len(result["description"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_task_get_includes_parent_info(self, setup_client, mock_bitrix_api):
+        """task_get should include parent ID for subtask context."""
+        response = {
+            "result": {
+                "task": {
+                    "id": "457",
+                    "title": "Subtask",
+                    "description": "A subtask",
+                    "responsibleId": "7",
+                    "groupId": "5",
+                    "createdBy": "1",
+                    "status": "2",
+                    "deadline": None,
+                    "parentId": "456",
+                    "priority": "1",
+                }
+            }
+        }
+        mock_bitrix_api.post("tasks.task.get").mock(
+            return_value=Response(200, json=response)
+        )
+
+        result = await task_get(id=457)
+
+        assert result["parentId"] == 456
+
+
+class TestTaskCreate:
+    """Tests for task_create tool."""
+
+    @pytest.mark.asyncio
+    async def test_task_create_minimal(
+        self, setup_client, sample_task_add_response, mock_bitrix_api
+    ):
+        """task_create should work with minimal required fields."""
+        mock_bitrix_api.post("tasks.task.add").mock(
+            return_value=Response(200, json=sample_task_add_response)
+        )
+
+        result = await task_create(
+            title="New task",
+            responsibleId=7,
+        )
+
+        assert result["id"] == 457
+        assert result["title"] == "New task"
+
+    @pytest.mark.asyncio
+    async def test_task_create_full(
+        self, setup_client, sample_task_add_response, sample_task_data, mock_bitrix_api
+    ):
+        """task_create should send all provided fields."""
+        mock_bitrix_api.post("tasks.task.add").mock(
+            return_value=Response(200, json=sample_task_add_response)
+        )
+
+        result = await task_create(
+            title=sample_task_data["title"],
+            responsibleId=sample_task_data["responsibleId"],
+            description=sample_task_data["description"],
+            groupId=sample_task_data["groupId"],
+            parentId=sample_task_data["parentId"],
+            priority=sample_task_data["priority"],
+        )
+
+        assert result["id"] == 457
+        assert result["title"] == sample_task_data["title"]
+
+        # Verify API was called with correct fields
+        import json
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        fields = body["fields"]
+
+        assert fields["TITLE"] == sample_task_data["title"]
+        assert fields["DESCRIPTION"] == sample_task_data["description"]
+        assert fields["GROUP_ID"] == sample_task_data["groupId"]
+        assert fields["PARENT_ID"] == sample_task_data["parentId"]
+
+    @pytest.mark.asyncio
+    async def test_task_create_subtask(
+        self, setup_client, sample_task_add_response, mock_bitrix_api
+    ):
+        """task_create with parentId should create a subtask."""
+        mock_bitrix_api.post("tasks.task.add").mock(
+            return_value=Response(200, json=sample_task_add_response)
+        )
+
+        await task_create(
+            title="Subtask",
+            responsibleId=7,
+            groupId=5,
+            parentId=456,  # Parent task ID
+        )
+
+        # Verify PARENT_ID was sent
+        import json
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["fields"]["PARENT_ID"] == 456
+
+    @pytest.mark.asyncio
+    async def test_task_create_inherits_from_parent(
+        self, setup_client, sample_task_add_response, mock_bitrix_api
+    ):
+        """task_create should copy responsibleId and groupId from parent."""
+        mock_bitrix_api.post("tasks.task.add").mock(
+            return_value=Response(200, json=sample_task_add_response)
+        )
+
+        # Simulating the workflow: copy from parent task
+        parent_responsible_id = 7  # From parent task
+        parent_group_id = 5  # From parent task
+        parent_id = 456
+
+        await task_create(
+            title="Subtask",
+            responsibleId=parent_responsible_id,  # Copied from parent
+            groupId=parent_group_id,  # Copied from parent
+            parentId=parent_id,
+            description="Subtask description",
+        )
+
+        import json
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        fields = body["fields"]
+
+        # Verify subtask inherits parent's properties
+        assert fields["RESPONSIBLE_ID"] == parent_responsible_id
+        assert fields["GROUP_ID"] == parent_group_id
+        assert fields["PARENT_ID"] == parent_id
+
+
+class TestToolClientManagement:
+    """Tests for tool client management."""
+
+    def test_get_client_without_init_raises(self):
+        """get_client should raise if not initialized."""
+        tasks._client = None  # Reset client
+        with pytest.raises(RuntimeError, match="client not initialized"):
+            tasks.get_client()
+
+    def test_set_client_stores_client(self, mock_webhook_url):
+        """set_client should store the client instance."""
+        client = Bitrix24Client(webhook_url=mock_webhook_url)
+        tasks.set_client(client)
+        assert tasks.get_client() is client
