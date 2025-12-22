@@ -5,8 +5,9 @@ import respx
 from httpx import Response
 
 from bitrix_mcp.bitrix.client import Bitrix24Client
-from bitrix_mcp.tools import tasks
+from bitrix_mcp.tools import tasks, users
 from bitrix_mcp.tools.tasks import task_search, task_get, task_create
+from bitrix_mcp.tools.users import user_search
 
 
 @pytest.fixture
@@ -14,6 +15,7 @@ def setup_client(mock_webhook_url, mock_bitrix_api):
     """Set up Bitrix24 client for tools."""
     client = Bitrix24Client(webhook_url=mock_webhook_url)
     tasks.set_client(client)
+    users.set_client(client)
     yield client
 
 
@@ -275,3 +277,94 @@ class TestToolClientManagement:
         client = Bitrix24Client(webhook_url=mock_webhook_url)
         tasks.set_client(client)
         assert tasks.get_client() is client
+
+
+class TestUserSearch:
+    """Tests for user_search tool."""
+
+    @pytest.mark.asyncio
+    async def test_user_search_basic(
+        self, setup_client, sample_user_get_response, mock_bitrix_api
+    ):
+        """user_search should return formatted results."""
+        mock_bitrix_api.post("user.get").mock(
+            return_value=Response(200, json=sample_user_get_response)
+        )
+
+        results = await user_search(query="John")
+
+        assert len(results) == 2
+        assert results[0]["id"] == 7
+        assert results[0]["name"] == "John Doe"
+        assert results[0]["email"] == "john@company.com"
+
+    @pytest.mark.asyncio
+    async def test_user_search_with_limit(
+        self, setup_client, sample_user_get_response, mock_bitrix_api
+    ):
+        """user_search should pass limit parameter."""
+        mock_bitrix_api.post("user.get").mock(
+            return_value=Response(200, json=sample_user_get_response)
+        )
+
+        results = await user_search(query="John", limit=1)
+
+        # Limit is applied in client
+        assert len(results) == 1
+
+    @pytest.mark.asyncio
+    async def test_user_search_no_results(self, setup_client, mock_bitrix_api):
+        """user_search should handle empty results."""
+        mock_bitrix_api.post("user.get").mock(
+            return_value=Response(200, json={"result": []})
+        )
+
+        results = await user_search(query="nonexistent user xyz")
+
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_user_search_name_formatting(
+        self, setup_client, sample_single_user_response, mock_bitrix_api
+    ):
+        """user_search should format full name correctly."""
+        mock_bitrix_api.post("user.get").mock(
+            return_value=Response(200, json=sample_single_user_response)
+        )
+
+        results = await user_search(query="John")
+
+        # Name should be "FirstName LastName"
+        assert results[0]["name"] == "John Doe"
+
+    @pytest.mark.asyncio
+    async def test_user_search_filter_parameter(
+        self, setup_client, sample_user_get_response, mock_bitrix_api
+    ):
+        """user_search should use FIND filter for search."""
+        mock_bitrix_api.post("user.get").mock(
+            return_value=Response(200, json=sample_user_get_response)
+        )
+
+        await user_search(query="John")
+
+        import json
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["FILTER"]["FIND"] == "John"
+
+
+class TestUserToolClientManagement:
+    """Tests for user tool client management."""
+
+    def test_user_get_client_without_init_raises(self):
+        """get_client should raise if not initialized."""
+        users._client = None  # Reset client
+        with pytest.raises(RuntimeError, match="client not initialized"):
+            users.get_client()
+
+    def test_user_set_client_stores_client(self, mock_webhook_url):
+        """set_client should store the client instance."""
+        client = Bitrix24Client(webhook_url=mock_webhook_url)
+        users.set_client(client)
+        assert users.get_client() is client

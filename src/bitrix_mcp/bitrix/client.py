@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from .types import BitrixAPIError, BitrixConnectionError, BitrixTask
+from .types import BitrixAPIError, BitrixConnectionError, BitrixTask, BitrixUser
 
 logger = logging.getLogger(__name__)
 
@@ -250,4 +250,35 @@ class Bitrix24Client:
         if isinstance(task_result, dict):
             return int(task_result.get("id", task_result.get("ID", 0)))
         return int(task_result)
+
+    async def user_get(
+        self,
+        query: str,
+        limit: int = 10,
+    ) -> list[BitrixUser]:
+        """Search for users by name.
+
+        Uses the FIND filter for general search across name, last name, and email.
+
+        Args:
+            query: Search query (name, last name, or email)
+            limit: Maximum number of results
+
+        Returns:
+            List of BitrixUser objects
+        """
+        params: dict[str, Any] = {
+            "FILTER": {"FIND": query},
+        }
+
+        # user.get returns a list directly, not wrapped in a "users" key
+        result = await self._request("user.get", params)
+
+        # Result is a list of users directly
+        if isinstance(result, list):
+            users_data = result[:limit]
+        else:
+            users_data = []
+
+        return [BitrixUser.model_validate(user) for user in users_data]
 

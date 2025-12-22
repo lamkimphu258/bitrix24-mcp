@@ -207,6 +207,31 @@ Update `~/.cursor/mcp.json`:
 }
 ```
 
+## Pre-completion Checklist
+
+**Before implement any task, you MUST:**
+
+1. **Add tests for new features** - Any new functionality must have corresponding test coverage. **Write tests during implementation, not after**:
+   - New tools → add tests in `test_tools.py`
+   - New API client methods → add tests in `test_client.py`
+   - New workflows → add tests in `test_integration.py`
+
+**Before finishing any task, you MUST:**
+
+1. **Run linting/formatting** - Fix all style issues before completing:
+   ```bash
+   ruff check --fix .
+   ruff format .
+   ```
+
+2. **Run all tests** - Ensure all tests pass:
+   ```bash
+   pytest -v
+   ```
+   If tests fail, fix the issues and repeat steps 2-3 until all tests pass.
+
+**Do NOT consider a task complete until all three steps pass successfully.**
+
 ## Gotchas
 
 1. **NEVER read `.env` files** - They contain secrets (webhook tokens). Use environment variables from the system instead.

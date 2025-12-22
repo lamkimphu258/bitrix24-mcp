@@ -91,6 +91,30 @@ class BitrixTask(BaseModel):
         }
 
 
+class BitrixUser(BaseModel):
+    """Represents a Bitrix24 user.
+
+    The Bitrix24 user API returns fields in UPPERCASE format (e.g., ID, NAME, LAST_NAME).
+    """
+
+    id: str = Field(alias="ID")
+    name: str = Field(alias="NAME")
+    last_name: str = Field(default="", alias="LAST_NAME")
+    email: str | None = Field(default=None, alias="EMAIL")
+    active: bool = Field(default=True, alias="ACTIVE")
+
+    model_config = {"populate_by_name": True}
+
+    def to_search_result(self) -> dict[str, Any]:
+        """Convert to search result format for MCP tool response."""
+        full_name = f"{self.name} {self.last_name}".strip()
+        return {
+            "id": int(self.id),
+            "name": full_name,
+            "email": self.email,
+        }
+
+
 class BitrixAPIError(Exception):
     """Exception raised for Bitrix24 API errors."""
 

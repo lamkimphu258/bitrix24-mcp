@@ -95,3 +95,42 @@ def api_error_response() -> dict:
         "error": "TASK_NOT_FOUND",
         "error_description": "Task not found",
     }
+
+
+@pytest.fixture
+def sample_user_get_response() -> dict:
+    """Return sample response for user.get API."""
+    return {
+        "result": [
+            {
+                "ID": "7",
+                "NAME": "John",
+                "LAST_NAME": "Doe",
+                "EMAIL": "john@company.com",
+                "ACTIVE": True,
+            },
+            {
+                "ID": "8",
+                "NAME": "Johnny",
+                "LAST_NAME": "Smith",
+                "EMAIL": "johnny@company.com",
+                "ACTIVE": True,
+            },
+        ]
+    }
+
+
+@pytest.fixture
+def sample_single_user_response() -> dict:
+    """Return sample response for user.get API with single user."""
+    return {
+        "result": [
+            {
+                "ID": "7",
+                "NAME": "John",
+                "LAST_NAME": "Doe",
+                "EMAIL": "john@company.com",
+                "ACTIVE": True,
+            },
+        ]
+    }

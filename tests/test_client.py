@@ -197,6 +197,56 @@ class TestTaskAdd:
         assert fields["PRIORITY"] == sample_task_data["priority"]
 
 
+class TestUserGet:
+    """Tests for user_get method."""
+
+    @pytest.mark.asyncio
+    async def test_user_get_success(
+        self, mock_webhook_url, sample_user_get_response, mock_bitrix_api
+    ):
+        """user_get should return list of users."""
+        mock_bitrix_api.post("user.get").mock(
+            return_value=Response(200, json=sample_user_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            users = await client.user_get(query="John")
+
+        assert len(users) == 2
+        assert users[0].id == "7"
+        assert users[0].name == "John"
+        assert users[0].last_name == "Doe"
+        assert users[0].email == "john@company.com"
+
+    @pytest.mark.asyncio
+    async def test_user_get_empty(self, mock_webhook_url, mock_bitrix_api):
+        """user_get should handle empty results."""
+        mock_bitrix_api.post("user.get").mock(
+            return_value=Response(200, json={"result": []})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            users = await client.user_get(query="nonexistent")
+
+        assert users == []
+
+    @pytest.mark.asyncio
+    async def test_user_get_with_limit(
+        self, mock_webhook_url, sample_user_get_response, mock_bitrix_api
+    ):
+        """user_get should respect limit parameter."""
+        mock_bitrix_api.post("user.get").mock(
+            return_value=Response(200, json=sample_user_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            users = await client.user_get(query="John", limit=1)
+
+        # Should return only 1 user due to limit
+        assert len(users) == 1
+        assert users[0].id == "7"
+
+
 class TestErrorHandling:
     """Tests for error handling."""
 

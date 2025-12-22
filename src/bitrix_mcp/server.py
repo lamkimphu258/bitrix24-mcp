@@ -12,7 +12,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 from .bitrix.client import Bitrix24Client
-from .tools import tasks
+from .tools import tasks, users
 
 # Configure logging
 log_level = os.getenv("LOG_LEVEL", "info").upper()
@@ -109,6 +109,28 @@ TOOLS = [
             "required": ["title", "responsibleId"],
         },
     ),
+    Tool(
+        name="user_search",
+        description=(
+            "Search for users by name. Use this to find a user's ID when you need to "
+            "assign tasks. Returns matching users with id, name, and email."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "User name to search for (partial match supported)",
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Maximum number of results",
+                    "default": 10,
+                },
+            },
+            "required": ["query"],
+        },
+    ),
 ]
 
 
@@ -143,6 +165,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 deadline=arguments.get("deadline"),
                 priority=arguments.get("priority"),
             )
+        elif name == "user_search":
+            result = await users.user_search(
+                query=arguments["query"],
+                limit=arguments.get("limit", 10),
+            )
         else:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -159,6 +186,7 @@ async def run_server() -> None:
     try:
         client = Bitrix24Client()
         tasks.set_client(client)
+        users.set_client(client)
         logger.info("Bitrix24 client initialized successfully")
     except ValueError as e:
         logger.error(f"Failed to initialize Bitrix24 client: {e}")
