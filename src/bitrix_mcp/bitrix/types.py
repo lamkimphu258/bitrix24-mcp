@@ -118,7 +118,12 @@ class BitrixUser(BaseModel):
 class BitrixAPIError(Exception):
     """Exception raised for Bitrix24 API errors."""
 
-    def __init__(self, message: str, error_code: str | None = None, error_description: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        error_code: str | None = None,
+        error_description: str | None = None,
+    ):
         self.error_code = error_code
         self.error_description = error_description
         super().__init__(message)

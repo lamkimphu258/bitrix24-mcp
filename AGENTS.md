@@ -11,7 +11,7 @@ Guidelines for AI agents working with this codebase.
 | Component | Technology |
 |-----------|------------|
 | Runtime | Python 3.11+ |
-| MCP SDK | `mcp` |
+| MCP SDK | `fastmcp` |
 | HTTP Client | `httpx` (async) |
 | Validation | Pydantic v2 |
 | Testing | pytest + pytest-asyncio + respx |
@@ -22,13 +22,11 @@ Guidelines for AI agents working with this codebase.
 ```
 src/bitrix_mcp/
 ├── __init__.py
-├── __main__.py        # Entry point (asyncio.run)
-├── server.py          # MCP server, tool definitions, handlers
-├── bitrix/
-│   ├── client.py      # Bitrix24 API client with rate limiting
-│   └── types.py       # Pydantic models, enums, exceptions
-└── tools/
-    └── tasks.py       # Tool implementations (task_search, task_get, task_create)
+├── __main__.py        # Entry point (mcp.run())
+├── server.py          # FastMCP server, @mcp.tool decorated functions
+└── bitrix/
+    ├── client.py      # Bitrix24 API client with rate limiting
+    └── types.py       # Pydantic models, enums, exceptions
 
 tests/
 ├── conftest.py        # Fixtures (mock responses, webhook URL)
@@ -39,20 +37,32 @@ tests/
 
 ## Key Architecture Decisions
 
-### 1. Global Client Pattern
-The `Bitrix24Client` is initialized once in `server.py` and shared via `tools/tasks.py`:
+### 1. FastMCP with Module-Level Client
+The server uses FastMCP's `@mcp.tool` decorator pattern with a lazy-initialized singleton client:
 ```python
 # In server.py
-client = Bitrix24Client()
-tasks.set_client(client)
+from fastmcp import FastMCP
 
-# In tools/tasks.py
+mcp = FastMCP("bitrix24-mcp")
+
 _client: Bitrix24Client | None = None
 
 def get_client() -> Bitrix24Client:
+    global _client
     if _client is None:
-        raise RuntimeError("Bitrix24 client not initialized")
+        _client = Bitrix24Client()
     return _client
+
+def set_client(client: Bitrix24Client) -> None:
+    global _client
+    _client = client
+
+@mcp.tool
+async def task_search(query: str, limit: int = 10) -> list[dict]:
+    """Search for tasks by title."""
+    client = get_client()
+    tasks = await client.task_list(filter={"%TITLE": query}, limit=limit)
+    return [task.to_search_result() for task in tasks]
 ```
 
 ### 2. Rate Limiting
@@ -87,7 +97,7 @@ Tools catch these and re-raise as `RuntimeError` with user-friendly messages.
 ### Imports
 Order (enforced by ruff):
 1. Standard library
-2. Third-party (`mcp`, `httpx`, `pydantic`)
+2. Third-party (`fastmcp`, `httpx`, `pydantic`)
 3. Local (`from .bitrix.client import ...`)
 
 ## Testing
@@ -108,13 +118,28 @@ pytest --cov=src/bitrix_mcp
 - **Use `respx`** for mocking HTTP requests to Bitrix24 API
 - **Use fixtures** from `conftest.py` for sample responses
 - **Test both success and error cases**
+- **Use `set_client()`** to inject mock clients in tests
 
 Example test structure:
 ```python
-async def test_task_search_success(mock_bitrix_api, sample_task_list_response):
-    mock_bitrix_api.post("tasks.task.list").respond(json=sample_task_list_response)
-    # ... test logic
+from bitrix_mcp.server import set_client, _task_search  # Use underscore-prefixed functions
+from bitrix_mcp.bitrix.client import Bitrix24Client
+
+@pytest.fixture
+def setup_client(mock_webhook_url, mock_bitrix_api):
+    client = Bitrix24Client(webhook_url=mock_webhook_url)
+    set_client(client)
+    yield client
+
+async def test_task_search_success(setup_client, mock_bitrix_api):
+    mock_bitrix_api.post("tasks.task.list").mock(
+        return_value=Response(200, json=sample_task_list_response)
+    )
+    results = await _task_search(query="welcome email")  # Call raw function directly
+    # ... assertions
 ```
+
+**Note:** Tests call the underscore-prefixed functions (`_task_search`, `_task_get`, etc.) directly instead of the `@mcp.tool` decorated versions. This allows testing the business logic without the FastMCP wrapper.
 
 ### Mock Response Format
 Always use **camelCase** keys matching actual API:
@@ -131,10 +156,24 @@ Always use **camelCase** keys matching actual API:
 ## Common Operations
 
 ### Adding a New Tool
-1. Define tool schema in `server.py` `TOOLS` list
-2. Implement function in `tools/tasks.py`
-3. Add handler in `call_tool()` in `server.py`
-4. Add tests in `test_tools.py`
+1. Add `@mcp.tool` decorated async function in `server.py`
+2. Use `get_client()` to access the Bitrix24 client
+3. Add tests in `test_tools.py`
+
+Example:
+```python
+@mcp.tool
+async def task_update(id: int, title: str | None = None) -> dict[str, Any]:
+    """Update a task's properties."""
+    client = get_client()
+    try:
+        await client.task_update(task_id=id, title=title)
+        return {"id": id, "updated": True}
+    except BitrixConnectionError as e:
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+```
 
 ### Modifying Pydantic Models
 - Update `types.py`
@@ -172,6 +211,7 @@ Always use **camelCase** keys matching actual API:
 | `tasks.task.list` | Search tasks by title filter |
 | `tasks.task.get` | Get single task details |
 | `tasks.task.add` | Create new task/subtask |
+| `user.get` | Search users by name |
 
 ## Development Workflow
 
@@ -244,5 +284,6 @@ Update `~/.cursor/mcp.json`:
 
 5. **No prompts/resources** - This MCP server only implements tools, not prompts or resources.
 
-6. **asyncio everywhere** - All API operations are async. Use `asyncio.run()` at entry point only.
+6. **asyncio everywhere** - All API operations are async. FastMCP handles the event loop via `mcp.run()`.
 
+7. **Testing with set_client()** - Always use `set_client()` in test fixtures to inject mock clients.

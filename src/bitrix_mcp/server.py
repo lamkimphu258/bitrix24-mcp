@@ -6,13 +6,12 @@ plan and break down tasks into subtasks in Bitrix24 Scrum.
 
 import logging
 import os
+from typing import Any
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from fastmcp import FastMCP
 
 from .bitrix.client import Bitrix24Client
-from .tools import tasks, users
+from .bitrix.types import BitrixAPIError, BitrixConnectionError
 
 # Configure logging
 log_level = os.getenv("LOG_LEVEL", "info").upper()
@@ -22,182 +21,206 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create MCP server instance
-server = Server("bitrix24-mcp")
+# Create FastMCP server instance
+mcp = FastMCP("bitrix24-mcp")
+
+# Module-level client (lazy initialization)
+_client: Bitrix24Client | None = None
 
 
-# Tool definitions for MCP
-TOOLS = [
-    Tool(
-        name="task_search",
-        description=(
-            "Search for tasks by title. Use this to find a task when user provides task name. "
-            "Returns matching tasks with id, title, responsibleId, groupId, and status."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Task title to search for (partial match supported)",
-                },
-                "limit": {
-                    "type": "number",
-                    "description": "Maximum number of results",
-                    "default": 10,
-                },
-            },
-            "required": ["query"],
-        },
-    ),
-    Tool(
-        name="task_get",
-        description=(
-            "Get detailed information about a task by ID. Returns title, description, "
-            "assignee, and group. Use this to read task description for analysis."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "number",
-                    "description": "Task ID",
-                },
-            },
-            "required": ["id"],
-        },
-    ),
-    Tool(
-        name="task_create",
-        description=(
-            "Create a new task or subtask. Use parentId to create a subtask under an "
-            "existing task. Copy responsibleId and groupId from parent task."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "title": {
-                    "type": "string",
-                    "description": "Task title",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Task description (can include HTML)",
-                },
-                "responsibleId": {
-                    "type": "number",
-                    "description": "User ID of assignee (copy from parent task)",
-                },
-                "groupId": {
-                    "type": "number",
-                    "description": "Workgroup/Scrum ID (copy from parent task)",
-                },
-                "parentId": {
-                    "type": "number",
-                    "description": "Parent task ID - creates this as a SUBTASK",
-                },
-                "deadline": {
-                    "type": "string",
-                    "description": "Deadline in ISO 8601 format (optional)",
-                },
-                "priority": {
-                    "type": "number",
-                    "enum": [0, 1, 2],
-                    "description": "Priority: 0=Low, 1=Medium, 2=High (optional)",
-                },
-            },
-            "required": ["title", "responsibleId"],
-        },
-    ),
-    Tool(
-        name="user_search",
-        description=(
-            "Search for users by name. Use this to find a user's ID when you need to "
-            "assign tasks. Returns matching users with id, name, and email."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "User name to search for (partial match supported)",
-                },
-                "limit": {
-                    "type": "number",
-                    "description": "Maximum number of results",
-                    "default": 10,
-                },
-            },
-            "required": ["query"],
-        },
-    ),
-]
+def get_client() -> Bitrix24Client:
+    """Get the Bitrix24 client instance.
+
+    Creates a new client if not already initialized.
+
+    Returns:
+        Bitrix24Client instance
+
+    Raises:
+        RuntimeError: If client cannot be initialized
+    """
+    global _client
+    if _client is None:
+        try:
+            _client = Bitrix24Client()
+            logger.info("Bitrix24 client initialized successfully")
+        except ValueError as e:
+            logger.error(f"Failed to initialize Bitrix24 client: {e}")
+            raise RuntimeError(f"Bitrix24 client not initialized: {e}")
+    return _client
 
 
-@server.list_tools()
-async def list_tools() -> list[Tool]:
-    """Return list of available tools."""
-    return TOOLS
+def set_client(client: Bitrix24Client) -> None:
+    """Set the Bitrix24 client instance.
+
+    Used for testing to inject a mock client.
+
+    Args:
+        client: Bitrix24Client instance to use
+    """
+    global _client
+    _client = client
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    """Handle tool calls."""
-    import json
+# Define tool functions separately so they can be called directly in tests
+# and then register them with @mcp.tool decorator
 
-    logger.info(f"Tool called: {name} with arguments: {arguments}")
+
+async def _task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Search for tasks by title.
+
+    Args:
+        query: Task title to search for (partial match supported)
+        limit: Maximum number of results (default: 10)
+
+    Returns:
+        List of matching tasks with id, title, responsibleId, groupId, and status
+    """
+    client = get_client()
 
     try:
-        if name == "task_search":
-            result = await tasks.task_search(
-                query=arguments["query"],
-                limit=arguments.get("limit", 10),
-            )
-        elif name == "task_get":
-            result = await tasks.task_get(id=arguments["id"])
-        elif name == "task_create":
-            result = await tasks.task_create(
-                title=arguments["title"],
-                responsibleId=arguments["responsibleId"],
-                description=arguments.get("description"),
-                groupId=arguments.get("groupId"),
-                parentId=arguments.get("parentId"),
-                deadline=arguments.get("deadline"),
-                priority=arguments.get("priority"),
-            )
-        elif name == "user_search":
-            result = await users.user_search(
-                query=arguments["query"],
-                limit=arguments.get("limit", 10),
-            )
-        else:
-            raise ValueError(f"Unknown tool: {name}")
-
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
-
-    except Exception as e:
-        logger.error(f"Tool {name} failed: {e}")
-        return [TextContent(type="text", text=f"Error: {str(e)}")]
-
-
-async def run_server() -> None:
-    """Run the MCP server with stdio transport."""
-    # Initialize Bitrix24 client
-    try:
-        client = Bitrix24Client()
-        tasks.set_client(client)
-        users.set_client(client)
-        logger.info("Bitrix24 client initialized successfully")
-    except ValueError as e:
-        logger.error(f"Failed to initialize Bitrix24 client: {e}")
-        raise
-
-    # Run server
-    logger.info("Starting Bitrix24 MCP server...")
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
+        tasks = await client.task_list(
+            filter={"%TITLE": query},
+            limit=limit,
         )
+        return [task.to_search_result() for task in tasks]
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during task search: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during task search: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
 
+
+async def _task_get(id: int) -> dict[str, Any]:
+    """Get detailed information about a task by ID.
+
+    Args:
+        id: Task ID
+
+    Returns:
+        Task details including id, title, description, responsibleId, groupId, etc.
+    """
+    client = get_client()
+
+    try:
+        task = await client.task_get(task_id=id)
+        return task.to_detail_result()
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during task get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during task get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _task_create(
+    title: str,
+    responsibleId: int,
+    description: str | None = None,
+    groupId: int | None = None,
+    parentId: int | None = None,
+    deadline: str | None = None,
+    priority: int | None = None,
+) -> dict[str, Any]:
+    """Create a new task or subtask.
+
+    Args:
+        title: Task title
+        responsibleId: User ID of assignee (copy from parent task)
+        description: Task description (HTML supported)
+        groupId: Workgroup/Scrum ID (copy from parent task)
+        parentId: Parent task ID - creates this as a SUBTASK
+        deadline: Deadline in ISO 8601 format (optional)
+        priority: Priority: 0=Low, 1=Medium, 2=High (optional)
+
+    Returns:
+        Created task info with id and title
+    """
+    client = get_client()
+
+    try:
+        task_id = await client.task_add(
+            title=title,
+            responsible_id=responsibleId,
+            description=description,
+            group_id=groupId,
+            parent_id=parentId,
+            deadline=deadline,
+            priority=priority,
+        )
+        return {"id": task_id, "title": title}
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during task create: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during task create: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _user_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Search for users by name.
+
+    Args:
+        query: User name to search for (partial match supported)
+        limit: Maximum number of results (default: 10)
+
+    Returns:
+        List of matching users with id, name, and email
+    """
+    client = get_client()
+
+    try:
+        users = await client.user_get(query=query, limit=limit)
+        return [user.to_search_result() for user in users]
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during user search: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during user search: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+# Register tools with MCP server using descriptive docstrings
+@mcp.tool
+async def task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Search for tasks by title. Use this to find a task when user provides task name.
+    Returns matching tasks with id, title, responsibleId, groupId, and status."""
+    return await _task_search(query=query, limit=limit)
+
+
+@mcp.tool
+async def task_get(id: int) -> dict[str, Any]:
+    """Get detailed information about a task by ID. Returns title, description,
+    assignee, and group. Use this to read task description for analysis."""
+    return await _task_get(id=id)
+
+
+@mcp.tool
+async def task_create(
+    title: str,
+    responsibleId: int,
+    description: str | None = None,
+    groupId: int | None = None,
+    parentId: int | None = None,
+    deadline: str | None = None,
+    priority: int | None = None,
+) -> dict[str, Any]:
+    """Create a new task or subtask. Use parentId to create a subtask under an existing task.
+    Copy responsibleId and groupId from parent task."""
+    return await _task_create(
+        title=title,
+        responsibleId=responsibleId,
+        description=description,
+        groupId=groupId,
+        parentId=parentId,
+        deadline=deadline,
+        priority=priority,
+    )
+
+
+@mcp.tool
+async def user_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Search for users by name. Use this to find a user's ID when you need to assign tasks.
+    Returns matching users with id, name, and email."""
+    return await _user_search(query=query, limit=limit)
