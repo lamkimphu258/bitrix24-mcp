@@ -1,11 +1,10 @@
 """Tests for Bitrix24 API client."""
 
 import pytest
-import respx
 from httpx import Response
 
 from bitrix_mcp.bitrix.client import Bitrix24Client, RateLimiter
-from bitrix_mcp.bitrix.types import BitrixAPIError, BitrixConnectionError
+from bitrix_mcp.bitrix.types import BitrixAPIError
 
 
 class TestBitrix24ClientInitialization:
@@ -105,6 +104,7 @@ class TestTaskList:
         # Verify the request was made with correct limit
         request = mock_bitrix_api.calls[0].request
         import json
+
         body = json.loads(request.content)
         assert body["limit"] == 5
 
@@ -130,9 +130,7 @@ class TestTaskGet:
         assert task.responsible_id == "7"
 
     @pytest.mark.asyncio
-    async def test_task_get_not_found(
-        self, mock_webhook_url, api_error_response, mock_bitrix_api
-    ):
+    async def test_task_get_not_found(self, mock_webhook_url, api_error_response, mock_bitrix_api):
         """task_get should raise error for non-existent task."""
         mock_bitrix_api.post("tasks.task.get").mock(
             return_value=Response(200, json=api_error_response)
@@ -185,6 +183,7 @@ class TestTaskAdd:
 
         # Verify the request contains all fields
         import json
+
         request = mock_bitrix_api.calls[0].request
         body = json.loads(request.content)
         fields = body["fields"]
@@ -221,9 +220,7 @@ class TestUserGet:
     @pytest.mark.asyncio
     async def test_user_get_empty(self, mock_webhook_url, mock_bitrix_api):
         """user_get should handle empty results."""
-        mock_bitrix_api.post("user.get").mock(
-            return_value=Response(200, json={"result": []})
-        )
+        mock_bitrix_api.post("user.get").mock(return_value=Response(200, json={"result": []}))
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
             users = await client.user_get(query="nonexistent")
@@ -251,9 +248,7 @@ class TestErrorHandling:
     """Tests for error handling."""
 
     @pytest.mark.asyncio
-    async def test_api_error_response(
-        self, mock_webhook_url, api_error_response, mock_bitrix_api
-    ):
+    async def test_api_error_response(self, mock_webhook_url, api_error_response, mock_bitrix_api):
         """Client should raise BitrixAPIError for API errors."""
         mock_bitrix_api.post("tasks.task.list").mock(
             return_value=Response(200, json=api_error_response)
@@ -273,4 +268,3 @@ class TestErrorHandling:
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
             with pytest.raises(BitrixAPIError):
                 await client.task_list()
-

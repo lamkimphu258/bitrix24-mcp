@@ -281,4 +281,3 @@ class Bitrix24Client:
             users_data = []
 
         return [BitrixUser.model_validate(user) for user in users_data]
-

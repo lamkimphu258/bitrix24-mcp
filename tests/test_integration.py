@@ -5,19 +5,17 @@ getting its details, and creating subtasks.
 """
 
 import pytest
-import respx
 from httpx import Response
 
 from bitrix_mcp.bitrix.client import Bitrix24Client
-from bitrix_mcp.tools import tasks
-from bitrix_mcp.tools.tasks import task_search, task_get, task_create
+from bitrix_mcp.server import _task_create, _task_get, _task_search, set_client
 
 
 @pytest.fixture
 def setup_integration(mock_webhook_url, mock_bitrix_api):
     """Set up client for integration tests."""
     client = Bitrix24Client(webhook_url=mock_webhook_url)
-    tasks.set_client(client)
+    set_client(client)
     yield mock_bitrix_api
 
 
@@ -31,47 +29,53 @@ class TestWorkflowSearchAndGet:
 
         # Step 1: Search for task by name
         mock_api.post("tasks.task.list").mock(
-            return_value=Response(200, json={
-                "result": {
-                    "tasks": [
-                        {
-                            "id": "456",
-                            "title": "Auto Send welcome email",
-                            "responsibleId": "7",
-                            "groupId": "5",
-                            "status": "2",
-                        }
-                    ]
-                }
-            })
+            return_value=Response(
+                200,
+                json={
+                    "result": {
+                        "tasks": [
+                            {
+                                "id": "456",
+                                "title": "Auto Send welcome email",
+                                "responsibleId": "7",
+                                "groupId": "5",
+                                "status": "2",
+                            }
+                        ]
+                    }
+                },
+            )
         )
 
-        search_results = await task_search(query="Auto Send welcome email")
+        search_results = await _task_search(query="Auto Send welcome email")
         assert len(search_results) == 1
         task_id = search_results[0]["id"]
         assert task_id == 456
 
         # Step 2: Get full task details
         mock_api.post("tasks.task.get").mock(
-            return_value=Response(200, json={
-                "result": {
-                    "task": {
-                        "id": "456",
-                        "title": "Auto Send welcome email",
-                        "description": "Any new sign up user, send welcome email.",
-                        "responsibleId": "7",
-                        "groupId": "5",
-                        "createdBy": "1",
-                        "status": "2",
-                        "deadline": None,
-                        "parentId": None,
-                        "priority": "1",
+            return_value=Response(
+                200,
+                json={
+                    "result": {
+                        "task": {
+                            "id": "456",
+                            "title": "Auto Send welcome email",
+                            "description": "Any new sign up user, send welcome email.",
+                            "responsibleId": "7",
+                            "groupId": "5",
+                            "createdBy": "1",
+                            "status": "2",
+                            "deadline": None,
+                            "parentId": None,
+                            "priority": "1",
+                        }
                     }
-                }
-            })
+                },
+            )
         )
 
-        task_details = await task_get(id=task_id)
+        task_details = await _task_get(id=task_id)
 
         # Verify we have all needed info for subtask creation
         assert task_details["id"] == 456
@@ -101,7 +105,9 @@ class TestWorkflowCreateSubtasks:
             },
             {
                 "title": "Create welcome email template",
-                "description": "Design HTML template with welcome message, branding, and unsubscribe link.",
+                "description": (
+                    "Design HTML template with welcome message, branding, and unsubscribe link."
+                ),
             },
             {
                 "title": "Implement user signup event listener",
@@ -113,15 +119,13 @@ class TestWorkflowCreateSubtasks:
         created_ids = [457, 458, 459]
         for created_id in created_ids:
             mock_api.post("tasks.task.add").mock(
-                return_value=Response(200, json={
-                    "result": {"task": {"id": created_id}}
-                })
+                return_value=Response(200, json={"result": {"task": {"id": created_id}}})
             )
 
         # Create subtasks
         results = []
         for subtask in subtasks:
-            result = await task_create(
+            result = await _task_create(
                 title=subtask["title"],
                 description=subtask["description"],
                 responsibleId=parent_responsible_id,
@@ -140,6 +144,7 @@ class TestWorkflowCreateSubtasks:
 
         # Verify each call had parent task info
         import json
+
         for call in mock_api.calls:
             body = json.loads(call.request.content)
             fields = body["fields"]
@@ -160,46 +165,52 @@ class TestFullWorkflow:
 
         # Search for the task
         mock_api.post("tasks.task.list").mock(
-            return_value=Response(200, json={
-                "result": {
-                    "tasks": [
-                        {
-                            "id": "456",
-                            "title": "Auto Send welcome email",
-                            "responsibleId": "7",
-                            "groupId": "5",
-                            "status": "2",
-                        }
-                    ]
-                }
-            })
+            return_value=Response(
+                200,
+                json={
+                    "result": {
+                        "tasks": [
+                            {
+                                "id": "456",
+                                "title": "Auto Send welcome email",
+                                "responsibleId": "7",
+                                "groupId": "5",
+                                "status": "2",
+                            }
+                        ]
+                    }
+                },
+            )
         )
 
-        search_results = await task_search(query="Auto Send welcome email")
+        search_results = await _task_search(query="Auto Send welcome email")
         parent_task_id = search_results[0]["id"]
 
         # === STEP 2: Get task details for AI analysis ===
 
         mock_api.post("tasks.task.get").mock(
-            return_value=Response(200, json={
-                "result": {
-                    "task": {
-                        "id": "456",
-                        "title": "Auto Send welcome email",
-                        "description": "Any new sign up user, send welcome email.",
-                        "responsibleId": "7",
-                        "groupId": "5",
-                        "createdBy": "1",
-                        "status": "2",
-                        "deadline": None,
-                        "parentId": None,
-                        "priority": "1",
+            return_value=Response(
+                200,
+                json={
+                    "result": {
+                        "task": {
+                            "id": "456",
+                            "title": "Auto Send welcome email",
+                            "description": "Any new sign up user, send welcome email.",
+                            "responsibleId": "7",
+                            "groupId": "5",
+                            "createdBy": "1",
+                            "status": "2",
+                            "deadline": None,
+                            "parentId": None,
+                            "priority": "1",
+                        }
                     }
-                }
-            })
+                },
+            )
         )
 
-        parent_task = await task_get(id=parent_task_id)
+        parent_task = await _task_get(id=parent_task_id)
 
         # Store parent info for subtask creation
         parent_info = {
@@ -229,7 +240,7 @@ class TestFullWorkflow:
 
         created_tasks = []
         for subtask in proposed_subtasks:
-            result = await task_create(
+            result = await _task_create(
                 title=subtask["title"],
                 description=subtask["description"],
                 responsibleId=parent_info["responsibleId"],

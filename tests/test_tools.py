@@ -1,21 +1,25 @@
 """Tests for MCP tools."""
 
 import pytest
-import respx
 from httpx import Response
 
+from bitrix_mcp import server
 from bitrix_mcp.bitrix.client import Bitrix24Client
-from bitrix_mcp.tools import tasks, users
-from bitrix_mcp.tools.tasks import task_search, task_get, task_create
-from bitrix_mcp.tools.users import user_search
+from bitrix_mcp.server import (
+    _task_create,
+    _task_get,
+    _task_search,
+    _user_search,
+    get_client,
+    set_client,
+)
 
 
 @pytest.fixture
 def setup_client(mock_webhook_url, mock_bitrix_api):
     """Set up Bitrix24 client for tools."""
     client = Bitrix24Client(webhook_url=mock_webhook_url)
-    tasks.set_client(client)
-    users.set_client(client)
+    set_client(client)
     yield client
 
 
@@ -31,7 +35,7 @@ class TestTaskSearch:
             return_value=Response(200, json=sample_task_list_response)
         )
 
-        results = await task_search(query="welcome email")
+        results = await _task_search(query="welcome email")
 
         assert len(results) == 2
         assert results[0]["id"] == 456
@@ -49,9 +53,10 @@ class TestTaskSearch:
             return_value=Response(200, json=sample_task_list_response)
         )
 
-        await task_search(query="test", limit=5)
+        await _task_search(query="test", limit=5)
 
         import json
+
         request = mock_bitrix_api.calls[0].request
         body = json.loads(request.content)
         assert body["limit"] == 5
@@ -63,7 +68,7 @@ class TestTaskSearch:
             return_value=Response(200, json={"result": {"tasks": []}})
         )
 
-        results = await task_search(query="nonexistent task xyz")
+        results = await _task_search(query="nonexistent task xyz")
 
         assert results == []
 
@@ -73,17 +78,33 @@ class TestTaskSearch:
         response = {
             "result": {
                 "tasks": [
-                    {"id": "1", "title": "Pending", "responsibleId": "1", "groupId": "1", "status": "2"},
-                    {"id": "2", "title": "In Progress", "responsibleId": "1", "groupId": "1", "status": "3"},
-                    {"id": "3", "title": "Completed", "responsibleId": "1", "groupId": "1", "status": "5"},
+                    {
+                        "id": "1",
+                        "title": "Pending",
+                        "responsibleId": "1",
+                        "groupId": "1",
+                        "status": "2",
+                    },
+                    {
+                        "id": "2",
+                        "title": "In Progress",
+                        "responsibleId": "1",
+                        "groupId": "1",
+                        "status": "3",
+                    },
+                    {
+                        "id": "3",
+                        "title": "Completed",
+                        "responsibleId": "1",
+                        "groupId": "1",
+                        "status": "5",
+                    },
                 ]
             }
         }
-        mock_bitrix_api.post("tasks.task.list").mock(
-            return_value=Response(200, json=response)
-        )
+        mock_bitrix_api.post("tasks.task.list").mock(return_value=Response(200, json=response))
 
-        results = await task_search(query="test")
+        results = await _task_search(query="test")
 
         assert results[0]["status"] == "pending"
         assert results[1]["status"] == "in_progress"
@@ -94,15 +115,13 @@ class TestTaskGet:
     """Tests for task_get tool."""
 
     @pytest.mark.asyncio
-    async def test_task_get_basic(
-        self, setup_client, sample_task_get_response, mock_bitrix_api
-    ):
+    async def test_task_get_basic(self, setup_client, sample_task_get_response, mock_bitrix_api):
         """task_get should return full task details."""
         mock_bitrix_api.post("tasks.task.get").mock(
             return_value=Response(200, json=sample_task_get_response)
         )
 
-        result = await task_get(id=456)
+        result = await _task_get(id=456)
 
         assert result["id"] == 456
         assert result["title"] == "Auto Send welcome email"
@@ -121,7 +140,7 @@ class TestTaskGet:
             return_value=Response(200, json=sample_task_get_response)
         )
 
-        result = await task_get(id=456)
+        result = await _task_get(id=456)
 
         # Description is the key field for AI to analyze
         assert "description" in result
@@ -147,11 +166,9 @@ class TestTaskGet:
                 }
             }
         }
-        mock_bitrix_api.post("tasks.task.get").mock(
-            return_value=Response(200, json=response)
-        )
+        mock_bitrix_api.post("tasks.task.get").mock(return_value=Response(200, json=response))
 
-        result = await task_get(id=457)
+        result = await _task_get(id=457)
 
         assert result["parentId"] == 456
 
@@ -168,7 +185,7 @@ class TestTaskCreate:
             return_value=Response(200, json=sample_task_add_response)
         )
 
-        result = await task_create(
+        result = await _task_create(
             title="New task",
             responsibleId=7,
         )
@@ -185,7 +202,7 @@ class TestTaskCreate:
             return_value=Response(200, json=sample_task_add_response)
         )
 
-        result = await task_create(
+        result = await _task_create(
             title=sample_task_data["title"],
             responsibleId=sample_task_data["responsibleId"],
             description=sample_task_data["description"],
@@ -199,6 +216,7 @@ class TestTaskCreate:
 
         # Verify API was called with correct fields
         import json
+
         request = mock_bitrix_api.calls[0].request
         body = json.loads(request.content)
         fields = body["fields"]
@@ -217,7 +235,7 @@ class TestTaskCreate:
             return_value=Response(200, json=sample_task_add_response)
         )
 
-        await task_create(
+        await _task_create(
             title="Subtask",
             responsibleId=7,
             groupId=5,
@@ -226,6 +244,7 @@ class TestTaskCreate:
 
         # Verify PARENT_ID was sent
         import json
+
         request = mock_bitrix_api.calls[0].request
         body = json.loads(request.content)
         assert body["fields"]["PARENT_ID"] == 456
@@ -244,7 +263,7 @@ class TestTaskCreate:
         parent_group_id = 5  # From parent task
         parent_id = 456
 
-        await task_create(
+        await _task_create(
             title="Subtask",
             responsibleId=parent_responsible_id,  # Copied from parent
             groupId=parent_group_id,  # Copied from parent
@@ -253,6 +272,7 @@ class TestTaskCreate:
         )
 
         import json
+
         request = mock_bitrix_api.calls[0].request
         body = json.loads(request.content)
         fields = body["fields"]
@@ -268,30 +288,28 @@ class TestToolClientManagement:
 
     def test_get_client_without_init_raises(self):
         """get_client should raise if not initialized."""
-        tasks._client = None  # Reset client
+        server._client = None  # Reset client
         with pytest.raises(RuntimeError, match="client not initialized"):
-            tasks.get_client()
+            get_client()
 
     def test_set_client_stores_client(self, mock_webhook_url):
         """set_client should store the client instance."""
         client = Bitrix24Client(webhook_url=mock_webhook_url)
-        tasks.set_client(client)
-        assert tasks.get_client() is client
+        set_client(client)
+        assert get_client() is client
 
 
 class TestUserSearch:
     """Tests for user_search tool."""
 
     @pytest.mark.asyncio
-    async def test_user_search_basic(
-        self, setup_client, sample_user_get_response, mock_bitrix_api
-    ):
+    async def test_user_search_basic(self, setup_client, sample_user_get_response, mock_bitrix_api):
         """user_search should return formatted results."""
         mock_bitrix_api.post("user.get").mock(
             return_value=Response(200, json=sample_user_get_response)
         )
 
-        results = await user_search(query="John")
+        results = await _user_search(query="John")
 
         assert len(results) == 2
         assert results[0]["id"] == 7
@@ -307,7 +325,7 @@ class TestUserSearch:
             return_value=Response(200, json=sample_user_get_response)
         )
 
-        results = await user_search(query="John", limit=1)
+        results = await _user_search(query="John", limit=1)
 
         # Limit is applied in client
         assert len(results) == 1
@@ -315,11 +333,9 @@ class TestUserSearch:
     @pytest.mark.asyncio
     async def test_user_search_no_results(self, setup_client, mock_bitrix_api):
         """user_search should handle empty results."""
-        mock_bitrix_api.post("user.get").mock(
-            return_value=Response(200, json={"result": []})
-        )
+        mock_bitrix_api.post("user.get").mock(return_value=Response(200, json={"result": []}))
 
-        results = await user_search(query="nonexistent user xyz")
+        results = await _user_search(query="nonexistent user xyz")
 
         assert results == []
 
@@ -332,7 +348,7 @@ class TestUserSearch:
             return_value=Response(200, json=sample_single_user_response)
         )
 
-        results = await user_search(query="John")
+        results = await _user_search(query="John")
 
         # Name should be "FirstName LastName"
         assert results[0]["name"] == "John Doe"
@@ -346,25 +362,10 @@ class TestUserSearch:
             return_value=Response(200, json=sample_user_get_response)
         )
 
-        await user_search(query="John")
+        await _user_search(query="John")
 
         import json
+
         request = mock_bitrix_api.calls[0].request
         body = json.loads(request.content)
         assert body["FILTER"]["FIND"] == "John"
-
-
-class TestUserToolClientManagement:
-    """Tests for user tool client management."""
-
-    def test_user_get_client_without_init_raises(self):
-        """get_client should raise if not initialized."""
-        users._client = None  # Reset client
-        with pytest.raises(RuntimeError, match="client not initialized"):
-            users.get_client()
-
-    def test_user_set_client_stores_client(self, mock_webhook_url):
-        """set_client should store the client instance."""
-        client = Bitrix24Client(webhook_url=mock_webhook_url)
-        users.set_client(client)
-        assert users.get_client() is client

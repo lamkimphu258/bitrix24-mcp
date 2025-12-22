@@ -5,16 +5,13 @@ This module allows running the server as:
     uvx bitrix24-mcp
 """
 
-import asyncio
-
-from .server import run_server
+from .server import mcp
 
 
 def main() -> None:
     """Main entry point."""
-    asyncio.run(run_server())
+    mcp.run()
 
 
 if __name__ == "__main__":
     main()
-
