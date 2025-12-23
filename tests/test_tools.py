@@ -32,7 +32,7 @@ class TestTaskSearch:
     async def test_task_search_basic(
         self, setup_client, sample_task_list_response, mock_bitrix_api
     ):
-        """task_search should return formatted results."""
+        """task_search should return formatted results with URL."""
         mock_bitrix_api.post("tasks.task.list").mock(
             return_value=Response(200, json=sample_task_list_response)
         )
@@ -45,6 +45,10 @@ class TestTaskSearch:
         assert results[0]["responsibleId"] == 7
         assert results[0]["groupId"] == 5
         assert results[0]["status"] == "pending"
+        # URL should be generated from base_url
+        assert (
+            results[0]["url"] == "https://test.bitrix24.com/workgroups/group/5/tasks/task/view/456/"
+        )
 
     @pytest.mark.asyncio
     async def test_task_search_with_limit(
@@ -118,7 +122,7 @@ class TestTaskGet:
 
     @pytest.mark.asyncio
     async def test_task_get_basic(self, setup_client, sample_task_get_response, mock_bitrix_api):
-        """task_get should return full task details."""
+        """task_get should return full task details with URL."""
         mock_bitrix_api.post("tasks.task.get").mock(
             return_value=Response(200, json=sample_task_get_response)
         )
@@ -132,6 +136,8 @@ class TestTaskGet:
         assert result["groupId"] == 5
         assert result["status"] == "pending"
         assert result["priority"] == "medium"
+        # URL should be generated from base_url
+        assert result["url"] == "https://test.bitrix24.com/workgroups/group/5/tasks/task/view/456/"
 
     @pytest.mark.asyncio
     async def test_task_get_with_description(
@@ -384,7 +390,7 @@ class TestTaskListByUser:
     async def test_task_list_by_user_basic(
         self, setup_client, sample_task_list_response, mock_bitrix_api
     ):
-        """task_list_by_user should return tasks for a specific user."""
+        """task_list_by_user should return tasks for a specific user with URL."""
         mock_bitrix_api.post("tasks.task.list").mock(
             return_value=Response(200, json=sample_task_list_response)
         )
@@ -394,6 +400,10 @@ class TestTaskListByUser:
         assert len(results) == 2
         assert results[0]["id"] == 456
         assert results[0]["responsibleId"] == 7
+        # URL should be generated from base_url
+        assert (
+            results[0]["url"] == "https://test.bitrix24.com/workgroups/group/5/tasks/task/view/456/"
+        )
 
     @pytest.mark.asyncio
     async def test_task_list_by_user_with_status(

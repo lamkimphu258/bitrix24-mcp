@@ -5,7 +5,7 @@ import logging
 import os
 import time
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -91,6 +91,28 @@ class Bitrix24Client:
 
         self._client = httpx.AsyncClient(timeout=30.0)
         self._rate_limiter = RateLimiter(rate=2.0)
+
+        # Extract base URL for generating task links
+        self._base_url = self._extract_base_url()
+
+    def _extract_base_url(self) -> str:
+        """Extract base URL from webhook URL for generating task links.
+
+        Example: https://example.bitrix24.com/rest/1/token/ -> https://example.bitrix24.com
+
+        Returns:
+            Base URL without the /rest/... path
+        """
+        parsed = urlparse(self.webhook_url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    def get_base_url(self) -> str:
+        """Get the base URL for generating Bitrix24 links.
+
+        Returns:
+            Base URL (e.g., https://example.bitrix24.com)
+        """
+        return self._base_url
 
     async def close(self) -> None:
         """Close the HTTP client."""

@@ -38,6 +38,22 @@ class TestBitrix24ClientInitialization:
         client = Bitrix24Client()
         assert client.webhook_url == mock_webhook_url
 
+    def test_client_extracts_base_url(self, mock_webhook_url):
+        """Client should extract base URL from webhook URL."""
+        client = Bitrix24Client(webhook_url=mock_webhook_url)
+        # mock_webhook_url = "https://test.bitrix24.com/rest/1/test-token/"
+        assert client.get_base_url() == "https://test.bitrix24.com"
+
+    def test_client_extracts_base_url_various_formats(self):
+        """Client should extract base URL from various webhook URL formats."""
+        # Standard format
+        client1 = Bitrix24Client(webhook_url="https://example.bitrix24.com/rest/1/token/")
+        assert client1.get_base_url() == "https://example.bitrix24.com"
+
+        # Custom domain
+        client2 = Bitrix24Client(webhook_url="https://intranet.usea.global/rest/1665/token/")
+        assert client2.get_base_url() == "https://intranet.usea.global"
+
 
 class TestRateLimiter:
     """Tests for rate limiter."""

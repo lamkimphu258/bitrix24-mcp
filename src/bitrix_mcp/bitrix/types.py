@@ -65,19 +65,43 @@ class BitrixTask(BaseModel):
 
     model_config = {"populate_by_name": True}
 
-    def to_search_result(self) -> dict[str, Any]:
-        """Convert to search result format for MCP tool response."""
-        return {
+    def get_url(self, base_url: str) -> str | None:
+        """Generate Bitrix24 task URL.
+
+        Args:
+            base_url: Base URL (e.g., https://example.bitrix24.com)
+
+        Returns:
+            Task URL or None if group_id is not set
+        """
+        if not self.group_id:
+            return None
+        return f"{base_url}/workgroups/group/{self.group_id}/tasks/task/view/{self.id}/"
+
+    def to_search_result(self, base_url: str | None = None) -> dict[str, Any]:
+        """Convert to search result format for MCP tool response.
+
+        Args:
+            base_url: Optional base URL for generating task URL
+        """
+        result = {
             "id": int(self.id),
             "title": self.title,
             "responsibleId": int(self.responsible_id) if self.responsible_id else None,
             "groupId": int(self.group_id) if self.group_id else None,
             "status": TaskStatus.to_string(int(self.status)),
         }
+        if base_url:
+            result["url"] = self.get_url(base_url)
+        return result
 
-    def to_detail_result(self) -> dict[str, Any]:
-        """Convert to detailed result format for MCP tool response."""
-        return {
+    def to_detail_result(self, base_url: str | None = None) -> dict[str, Any]:
+        """Convert to detailed result format for MCP tool response.
+
+        Args:
+            base_url: Optional base URL for generating task URL
+        """
+        result = {
             "id": int(self.id),
             "title": self.title,
             "description": self.description,
@@ -89,6 +113,9 @@ class BitrixTask(BaseModel):
             "deadline": self.deadline,
             "createdBy": int(self.created_by) if self.created_by else None,
         }
+        if base_url:
+            result["url"] = self.get_url(base_url)
+        return result
 
 
 class BitrixUser(BaseModel):
