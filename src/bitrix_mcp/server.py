@@ -74,16 +74,17 @@ async def _task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
         limit: Maximum number of results (default: 10)
 
     Returns:
-        List of matching tasks with id, title, responsibleId, groupId, and status
+        List of matching tasks with id, title, responsibleId, groupId, status, and url
     """
     client = get_client()
+    base_url = client.get_base_url()
 
     try:
         tasks = await client.task_list(
             filter={"%TITLE": query},
             limit=limit,
         )
-        return [task.to_search_result() for task in tasks]
+        return [task.to_search_result(base_url=base_url) for task in tasks]
     except BitrixConnectionError as e:
         logger.error(f"Connection error during task search: {e}")
         raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
@@ -99,13 +100,14 @@ async def _task_get(id: int) -> dict[str, Any]:
         id: Task ID
 
     Returns:
-        Task details including id, title, description, responsibleId, groupId, etc.
+        Task details including id, title, description, responsibleId, groupId, url, etc.
     """
     client = get_client()
+    base_url = client.get_base_url()
 
     try:
         task = await client.task_get(task_id=id)
-        return task.to_detail_result()
+        return task.to_detail_result(base_url=base_url)
     except BitrixConnectionError as e:
         logger.error(f"Connection error during task get: {e}")
         raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
@@ -195,9 +197,10 @@ async def _task_list_by_user(
         limit: Maximum number of results (default: 50)
 
     Returns:
-        List of tasks with id, title, responsibleId, groupId, and status
+        List of tasks with id, title, responsibleId, groupId, status, and url
     """
     client = get_client()
+    base_url = client.get_base_url()
 
     # Build filter
     filter_params: dict[str, Any] = {"RESPONSIBLE_ID": responsibleId}
@@ -216,12 +219,34 @@ async def _task_list_by_user(
 
     try:
         tasks = await client.task_list(filter=filter_params, limit=limit)
-        return [task.to_search_result() for task in tasks]
+        return [task.to_search_result(base_url=base_url) for task in tasks]
     except BitrixConnectionError as e:
         logger.error(f"Connection error during task list by user: {e}")
         raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
     except BitrixAPIError as e:
         logger.error(f"API error during task list by user: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _group_get(id: int) -> dict[str, Any]:
+    """Get workgroup/scrum details by ID.
+
+    Args:
+        id: Workgroup/Scrum ID
+
+    Returns:
+        Group details including id, name, description, ownerId
+    """
+    client = get_client()
+
+    try:
+        group = await client.group_get(group_id=id)
+        return group.to_result()
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during group get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during group get: {e}")
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
@@ -283,3 +308,11 @@ async def task_list_by_user(
         status=status,
         limit=limit,
     )
+
+
+@mcp.tool
+async def group_get(id: int) -> dict[str, Any]:
+    """Get workgroup/scrum details by ID. Use this to get the name of a group/scrum.
+    Returns id, name, description, ownerId, isProject, scrumMasterId.
+    Raises error if group not found."""
+    return await _group_get(id=id)

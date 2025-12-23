@@ -5,11 +5,11 @@ import logging
 import os
 import time
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from .types import BitrixAPIError, BitrixConnectionError, BitrixTask, BitrixUser
+from .types import BitrixAPIError, BitrixConnectionError, BitrixGroup, BitrixTask, BitrixUser
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,28 @@ class Bitrix24Client:
 
         self._client = httpx.AsyncClient(timeout=30.0)
         self._rate_limiter = RateLimiter(rate=2.0)
+
+        # Extract base URL for generating task links
+        self._base_url = self._extract_base_url()
+
+    def _extract_base_url(self) -> str:
+        """Extract base URL from webhook URL for generating task links.
+
+        Example: https://example.bitrix24.com/rest/1/token/ -> https://example.bitrix24.com
+
+        Returns:
+            Base URL without the /rest/... path
+        """
+        parsed = urlparse(self.webhook_url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    def get_base_url(self) -> str:
+        """Get the base URL for generating Bitrix24 links.
+
+        Returns:
+            Base URL (e.g., https://example.bitrix24.com)
+        """
+        return self._base_url
 
     async def close(self) -> None:
         """Close the HTTP client."""
@@ -305,3 +327,25 @@ class Bitrix24Client:
 
         logger.debug(f"Found {len(matching_users)} users matching '{query}'")
         return [BitrixUser.model_validate(user) for user in matching_users]
+
+    async def group_get(self, group_id: int) -> BitrixGroup:
+        """Get a workgroup/scrum by ID.
+
+        Args:
+            group_id: Workgroup/Scrum ID
+
+        Returns:
+            BitrixGroup object
+
+        Raises:
+            BitrixAPIError: If group not found or other API error
+        """
+        params = {"FILTER": {"ID": group_id}}
+
+        result = await self._request("sonet_group.get", params)
+
+        # Result is a list of groups
+        if result and isinstance(result, list) and len(result) > 0:
+            return BitrixGroup.model_validate(result[0])
+
+        raise BitrixAPIError(f"Group {group_id} not found", error_code="GROUP_NOT_FOUND")

@@ -6,6 +6,7 @@ from httpx import Response
 from bitrix_mcp import server
 from bitrix_mcp.bitrix.client import Bitrix24Client
 from bitrix_mcp.server import (
+    _group_get,
     _task_create,
     _task_get,
     _task_list_by_user,
@@ -31,7 +32,7 @@ class TestTaskSearch:
     async def test_task_search_basic(
         self, setup_client, sample_task_list_response, mock_bitrix_api
     ):
-        """task_search should return formatted results."""
+        """task_search should return formatted results with URL."""
         mock_bitrix_api.post("tasks.task.list").mock(
             return_value=Response(200, json=sample_task_list_response)
         )
@@ -44,6 +45,10 @@ class TestTaskSearch:
         assert results[0]["responsibleId"] == 7
         assert results[0]["groupId"] == 5
         assert results[0]["status"] == "pending"
+        # URL should be generated from base_url
+        assert (
+            results[0]["url"] == "https://test.bitrix24.com/workgroups/group/5/tasks/task/view/456/"
+        )
 
     @pytest.mark.asyncio
     async def test_task_search_with_limit(
@@ -117,7 +122,7 @@ class TestTaskGet:
 
     @pytest.mark.asyncio
     async def test_task_get_basic(self, setup_client, sample_task_get_response, mock_bitrix_api):
-        """task_get should return full task details."""
+        """task_get should return full task details with URL."""
         mock_bitrix_api.post("tasks.task.get").mock(
             return_value=Response(200, json=sample_task_get_response)
         )
@@ -131,6 +136,8 @@ class TestTaskGet:
         assert result["groupId"] == 5
         assert result["status"] == "pending"
         assert result["priority"] == "medium"
+        # URL should be generated from base_url
+        assert result["url"] == "https://test.bitrix24.com/workgroups/group/5/tasks/task/view/456/"
 
     @pytest.mark.asyncio
     async def test_task_get_with_description(
@@ -383,7 +390,7 @@ class TestTaskListByUser:
     async def test_task_list_by_user_basic(
         self, setup_client, sample_task_list_response, mock_bitrix_api
     ):
-        """task_list_by_user should return tasks for a specific user."""
+        """task_list_by_user should return tasks for a specific user with URL."""
         mock_bitrix_api.post("tasks.task.list").mock(
             return_value=Response(200, json=sample_task_list_response)
         )
@@ -393,6 +400,10 @@ class TestTaskListByUser:
         assert len(results) == 2
         assert results[0]["id"] == 456
         assert results[0]["responsibleId"] == 7
+        # URL should be generated from base_url
+        assert (
+            results[0]["url"] == "https://test.bitrix24.com/workgroups/group/5/tasks/task/view/456/"
+        )
 
     @pytest.mark.asyncio
     async def test_task_list_by_user_with_status(
@@ -441,3 +452,33 @@ class TestTaskListByUser:
         assert body["filter"]["RESPONSIBLE_ID"] == 7
         assert body["filter"]["STATUS"] == 2  # pending = 2
         assert body["limit"] == 25
+
+
+class TestGroupGet:
+    """Tests for group_get tool."""
+
+    @pytest.mark.asyncio
+    async def test_group_get_basic(self, setup_client, sample_group_get_response, mock_bitrix_api):
+        """group_get should return formatted group details."""
+        mock_bitrix_api.post("sonet_group.get").mock(
+            return_value=Response(200, json=sample_group_get_response)
+        )
+
+        result = await _group_get(id=205)
+
+        assert result["id"] == 205
+        assert result["name"] == "MusicFlowx Development"
+        assert result["description"] == "Development tasks for MusicFlowx platform"
+        assert result["ownerId"] == 22
+        assert result["isProject"] is True
+        assert result["scrumMasterId"] == 1665
+
+    @pytest.mark.asyncio
+    async def test_group_get_not_found(self, setup_client, mock_bitrix_api):
+        """group_get should raise error for non-existent group."""
+        mock_bitrix_api.post("sonet_group.get").mock(
+            return_value=Response(200, json={"result": []})
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error"):
+            await _group_get(id=999)
