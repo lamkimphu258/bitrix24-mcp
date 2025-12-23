@@ -134,3 +134,45 @@ def sample_single_user_response() -> dict:
             },
         ]
     }
+
+
+@pytest.fixture
+def sample_user_list_page1() -> dict:
+    """Return first page of users for pagination testing (50 users)."""
+    users = [
+        {
+            "ID": str(i),
+            "NAME": f"User{i}",
+            "LAST_NAME": f"Last{i}",
+            "EMAIL": f"user{i}@company.com",
+            "ACTIVE": True,
+        }
+        for i in range(1, 51)  # Users 1-50
+    ]
+    return {"result": users}
+
+
+@pytest.fixture
+def sample_user_list_page2() -> dict:
+    """Return second page of users for pagination testing (25 users - last page)."""
+    users = [
+        {
+            "ID": str(i),
+            "NAME": f"User{i}",
+            "LAST_NAME": f"Last{i}",
+            "EMAIL": f"user{i}@company.com",
+            "ACTIVE": True,
+        }
+        for i in range(51, 76)  # Users 51-75
+    ]
+    # Add a user named "Phu" to test filtering
+    users.append(
+        {
+            "ID": "100",
+            "NAME": "Phu",
+            "LAST_NAME": "Nguyen",
+            "EMAIL": "phu@company.com",
+            "ACTIVE": True,
+        }
+    )
+    return {"result": users}

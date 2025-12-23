@@ -8,6 +8,7 @@ from bitrix_mcp.bitrix.client import Bitrix24Client
 from bitrix_mcp.server import (
     _task_create,
     _task_get,
+    _task_list_by_user,
     _task_search,
     _user_search,
     get_client,
@@ -311,24 +312,11 @@ class TestUserSearch:
 
         results = await _user_search(query="John")
 
+        # Should match both "John Doe" and "Johnny Smith"
         assert len(results) == 2
         assert results[0]["id"] == 7
         assert results[0]["name"] == "John Doe"
         assert results[0]["email"] == "john@company.com"
-
-    @pytest.mark.asyncio
-    async def test_user_search_with_limit(
-        self, setup_client, sample_user_get_response, mock_bitrix_api
-    ):
-        """user_search should pass limit parameter."""
-        mock_bitrix_api.post("user.get").mock(
-            return_value=Response(200, json=sample_user_get_response)
-        )
-
-        results = await _user_search(query="John", limit=1)
-
-        # Limit is applied in client
-        assert len(results) == 1
 
     @pytest.mark.asyncio
     async def test_user_search_no_results(self, setup_client, mock_bitrix_api):
@@ -354,18 +342,102 @@ class TestUserSearch:
         assert results[0]["name"] == "John Doe"
 
     @pytest.mark.asyncio
-    async def test_user_search_filter_parameter(
+    async def test_user_search_filters_by_last_name(
         self, setup_client, sample_user_get_response, mock_bitrix_api
     ):
-        """user_search should use FIND filter for search."""
+        """user_search should filter by last name as well."""
         mock_bitrix_api.post("user.get").mock(
             return_value=Response(200, json=sample_user_get_response)
         )
 
-        await _user_search(query="John")
+        results = await _user_search(query="Doe")
+
+        # Should only match "John Doe"
+        assert len(results) == 1
+        assert results[0]["name"] == "John Doe"
+
+    @pytest.mark.asyncio
+    async def test_user_search_pagination(
+        self, setup_client, sample_user_list_page1, sample_user_list_page2, mock_bitrix_api
+    ):
+        """user_search should fetch all users via pagination and filter."""
+        mock_bitrix_api.post("user.get").mock(
+            side_effect=[
+                Response(200, json=sample_user_list_page1),
+                Response(200, json=sample_user_list_page2),
+            ]
+        )
+
+        results = await _user_search(query="Phu")
+
+        # Should find "Phu Nguyen" from page 2
+        assert len(results) == 1
+        assert results[0]["name"] == "Phu Nguyen"
+        assert results[0]["id"] == 100
+
+
+class TestTaskListByUser:
+    """Tests for task_list_by_user tool."""
+
+    @pytest.mark.asyncio
+    async def test_task_list_by_user_basic(
+        self, setup_client, sample_task_list_response, mock_bitrix_api
+    ):
+        """task_list_by_user should return tasks for a specific user."""
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_response)
+        )
+
+        results = await _task_list_by_user(responsibleId=7)
+
+        assert len(results) == 2
+        assert results[0]["id"] == 456
+        assert results[0]["responsibleId"] == 7
+
+    @pytest.mark.asyncio
+    async def test_task_list_by_user_with_status(
+        self, setup_client, sample_task_list_response, mock_bitrix_api
+    ):
+        """task_list_by_user should filter by status."""
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_response)
+        )
+
+        await _task_list_by_user(responsibleId=7, status="in_progress")
 
         import json
 
         request = mock_bitrix_api.calls[0].request
         body = json.loads(request.content)
-        assert body["FILTER"]["FIND"] == "John"
+        assert body["filter"]["RESPONSIBLE_ID"] == 7
+        assert body["filter"]["STATUS"] == 3  # in_progress = 3
+
+    @pytest.mark.asyncio
+    async def test_task_list_by_user_no_results(self, setup_client, mock_bitrix_api):
+        """task_list_by_user should handle empty results."""
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json={"result": {"tasks": []}})
+        )
+
+        results = await _task_list_by_user(responsibleId=999)
+
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_task_list_by_user_filter_params(
+        self, setup_client, sample_task_list_response, mock_bitrix_api
+    ):
+        """task_list_by_user should send correct filter parameters."""
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_response)
+        )
+
+        await _task_list_by_user(responsibleId=7, status="pending", limit=25)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["filter"]["RESPONSIBLE_ID"] == 7
+        assert body["filter"]["STATUS"] == 2  # pending = 2
+        assert body["limit"] == 25

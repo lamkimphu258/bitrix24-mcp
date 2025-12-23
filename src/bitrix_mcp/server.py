@@ -158,12 +158,13 @@ async def _task_create(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
-async def _user_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
+async def _user_search(query: str) -> list[dict[str, Any]]:
     """Search for users by name.
+
+    Fetches all users and filters by name client-side.
 
     Args:
         query: User name to search for (partial match supported)
-        limit: Maximum number of results (default: 10)
 
     Returns:
         List of matching users with id, name, and email
@@ -171,13 +172,56 @@ async def _user_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
     client = get_client()
 
     try:
-        users = await client.user_get(query=query, limit=limit)
+        users = await client.user_get(query=query)
         return [user.to_search_result() for user in users]
     except BitrixConnectionError as e:
         logger.error(f"Connection error during user search: {e}")
         raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
     except BitrixAPIError as e:
         logger.error(f"API error during user search: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _task_list_by_user(
+    responsibleId: int,
+    status: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List tasks assigned to a specific user.
+
+    Args:
+        responsibleId: User ID of the assignee
+        status: Optional status filter: "pending", "in_progress", "completed", "deferred"
+        limit: Maximum number of results (default: 50)
+
+    Returns:
+        List of tasks with id, title, responsibleId, groupId, and status
+    """
+    client = get_client()
+
+    # Build filter
+    filter_params: dict[str, Any] = {"RESPONSIBLE_ID": responsibleId}
+
+    # Map status string to Bitrix24 status code
+    status_map = {
+        "pending": 2,
+        "in_progress": 3,
+        "supposedly_completed": 4,
+        "completed": 5,
+        "deferred": 6,
+    }
+
+    if status and status in status_map:
+        filter_params["STATUS"] = status_map[status]
+
+    try:
+        tasks = await client.task_list(filter=filter_params, limit=limit)
+        return [task.to_search_result() for task in tasks]
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during task list by user: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during task list by user: {e}")
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
@@ -220,7 +264,22 @@ async def task_create(
 
 
 @mcp.tool
-async def user_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
+async def user_search(query: str) -> list[dict[str, Any]]:
     """Search for users by name. Use this to find a user's ID when you need to assign tasks.
     Returns matching users with id, name, and email."""
-    return await _user_search(query=query, limit=limit)
+    return await _user_search(query=query)
+
+
+@mcp.tool
+async def task_list_by_user(
+    responsibleId: int,
+    status: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List tasks assigned to a specific user. Use after finding user ID with user_search.
+    Optional status filter: "pending", "in_progress", "completed", "deferred"."""
+    return await _task_list_by_user(
+        responsibleId=responsibleId,
+        status=status,
+        limit=limit,
+    )

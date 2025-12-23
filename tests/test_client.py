@@ -203,7 +203,7 @@ class TestUserGet:
     async def test_user_get_success(
         self, mock_webhook_url, sample_user_get_response, mock_bitrix_api
     ):
-        """user_get should return list of users."""
+        """user_get should return list of users matching query."""
         mock_bitrix_api.post("user.get").mock(
             return_value=Response(200, json=sample_user_get_response)
         )
@@ -211,6 +211,7 @@ class TestUserGet:
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
             users = await client.user_get(query="John")
 
+        # Should match both "John Doe" and "Johnny Smith" (NAME contains "john")
         assert len(users) == 2
         assert users[0].id == "7"
         assert users[0].name == "John"
@@ -228,20 +229,82 @@ class TestUserGet:
         assert users == []
 
     @pytest.mark.asyncio
-    async def test_user_get_with_limit(
+    async def test_user_get_filters_by_name(
         self, mock_webhook_url, sample_user_get_response, mock_bitrix_api
     ):
-        """user_get should respect limit parameter."""
+        """user_get should filter users by first or last name."""
         mock_bitrix_api.post("user.get").mock(
             return_value=Response(200, json=sample_user_get_response)
         )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
-            users = await client.user_get(query="John", limit=1)
+            # Search by last name
+            users = await client.user_get(query="Doe")
 
-        # Should return only 1 user due to limit
+        # Should only match "John Doe" (LAST_NAME contains "doe")
         assert len(users) == 1
-        assert users[0].id == "7"
+        assert users[0].last_name == "Doe"
+
+    @pytest.mark.asyncio
+    async def test_user_get_case_insensitive(
+        self, mock_webhook_url, sample_user_get_response, mock_bitrix_api
+    ):
+        """user_get should filter case-insensitively."""
+        mock_bitrix_api.post("user.get").mock(
+            return_value=Response(200, json=sample_user_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            users = await client.user_get(query="JOHN")
+
+        # Should match both users (case-insensitive)
+        assert len(users) == 2
+
+    @pytest.mark.asyncio
+    async def test_user_get_pagination(
+        self, mock_webhook_url, sample_user_list_page1, sample_user_list_page2, mock_bitrix_api
+    ):
+        """user_get should paginate through all users."""
+        # First call returns 50 users (full page), second call returns 26 users (last page)
+        mock_bitrix_api.post("user.get").mock(
+            side_effect=[
+                Response(200, json=sample_user_list_page1),
+                Response(200, json=sample_user_list_page2),
+            ]
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            users = await client.user_get(query="Phu")
+
+        # Should have made 2 API calls
+        assert len(mock_bitrix_api.calls) == 2
+
+        # Verify pagination parameters
+        import json
+
+        first_call = json.loads(mock_bitrix_api.calls[0].request.content)
+        second_call = json.loads(mock_bitrix_api.calls[1].request.content)
+        assert first_call.get("start") == 0
+        assert second_call.get("start") == 50
+
+        # Should find "Phu" user from page 2
+        assert len(users) == 1
+        assert users[0].name == "Phu"
+        assert users[0].last_name == "Nguyen"
+
+    @pytest.mark.asyncio
+    async def test_user_get_no_match(
+        self, mock_webhook_url, sample_user_get_response, mock_bitrix_api
+    ):
+        """user_get should return empty list when no users match query."""
+        mock_bitrix_api.post("user.get").mock(
+            return_value=Response(200, json=sample_user_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            users = await client.user_get(query="xyz123nonexistent")
+
+        assert users == []
 
 
 class TestErrorHandling:

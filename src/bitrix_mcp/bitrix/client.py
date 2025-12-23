@@ -251,33 +251,57 @@ class Bitrix24Client:
             return int(task_result.get("id", task_result.get("ID", 0)))
         return int(task_result)
 
-    async def user_get(
-        self,
-        query: str,
-        limit: int = 10,
-    ) -> list[BitrixUser]:
-        """Search for users by name.
+    async def _user_list_all(self) -> list[dict[str, Any]]:
+        """Fetch all users with automatic pagination.
 
-        Uses the FIND filter for general search across name, last name, and email.
-
-        Args:
-            query: Search query (name, last name, or email)
-            limit: Maximum number of results
+        Bitrix24 API returns max 50 users per request.
+        This method paginates through all results.
 
         Returns:
-            List of BitrixUser objects
+            List of raw user dictionaries from the API
         """
-        params: dict[str, Any] = {
-            "FILTER": {"FIND": query},
-        }
+        all_users: list[dict[str, Any]] = []
+        start = 0
+        batch_size = 50
 
-        # user.get returns a list directly, not wrapped in a "users" key
-        result = await self._request("user.get", params)
+        while True:
+            result = await self._request("user.get", {"start": start})
 
-        # Result is a list of users directly
-        if isinstance(result, list):
-            users_data = result[:limit]
-        else:
-            users_data = []
+            if isinstance(result, list):
+                all_users.extend(result)
+                # If we got less than batch_size, we've reached the last page
+                if len(result) < batch_size:
+                    break
+                start += batch_size
+            else:
+                # Unexpected response format, stop pagination
+                break
 
-        return [BitrixUser.model_validate(user) for user in users_data]
+        logger.debug(f"Fetched {len(all_users)} total users")
+        return all_users
+
+    async def user_get(self, query: str) -> list[BitrixUser]:
+        """Search for users by name.
+
+        Fetches all users with pagination and filters client-side by name.
+        The Bitrix24 FIND filter is unreliable, so we filter locally.
+
+        Args:
+            query: Search query (matches against first name or last name)
+
+        Returns:
+            List of matching BitrixUser objects
+        """
+        all_users = await self._user_list_all()
+
+        # Filter by name client-side (case-insensitive)
+        query_lower = query.lower()
+        matching_users = [
+            user
+            for user in all_users
+            if query_lower in (user.get("NAME") or "").lower()
+            or query_lower in (user.get("LAST_NAME") or "").lower()
+        ]
+
+        logger.debug(f"Found {len(matching_users)} users matching '{query}'")
+        return [BitrixUser.model_validate(user) for user in matching_users]
