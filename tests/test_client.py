@@ -331,3 +331,55 @@ class TestErrorHandling:
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
             with pytest.raises(BitrixAPIError):
                 await client.task_list()
+
+
+class TestGroupGet:
+    """Tests for group_get method."""
+
+    @pytest.mark.asyncio
+    async def test_group_get_success(
+        self, mock_webhook_url, sample_group_get_response, mock_bitrix_api
+    ):
+        """group_get should return group details."""
+        mock_bitrix_api.post("sonet_group.get").mock(
+            return_value=Response(200, json=sample_group_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            group = await client.group_get(group_id=205)
+
+        assert group.id == "205"
+        assert group.name == "MusicFlowx Development"
+        assert group.description == "Development tasks for MusicFlowx platform"
+        assert group.owner_id == "22"
+        assert group.project == "Y"
+        assert group.scrum_master_id == "1665"
+
+    @pytest.mark.asyncio
+    async def test_group_get_not_found(self, mock_webhook_url, mock_bitrix_api):
+        """group_get should raise error for non-existent group."""
+        mock_bitrix_api.post("sonet_group.get").mock(
+            return_value=Response(200, json={"result": []})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Group 999 not found"):
+                await client.group_get(group_id=999)
+
+    @pytest.mark.asyncio
+    async def test_group_get_filter_params(
+        self, mock_webhook_url, sample_group_get_response, mock_bitrix_api
+    ):
+        """group_get should send correct filter parameters."""
+        mock_bitrix_api.post("sonet_group.get").mock(
+            return_value=Response(200, json=sample_group_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.group_get(group_id=205)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["FILTER"]["ID"] == 205

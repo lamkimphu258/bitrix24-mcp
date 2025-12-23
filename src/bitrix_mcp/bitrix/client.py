@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from .types import BitrixAPIError, BitrixConnectionError, BitrixTask, BitrixUser
+from .types import BitrixAPIError, BitrixConnectionError, BitrixGroup, BitrixTask, BitrixUser
 
 logger = logging.getLogger(__name__)
 
@@ -305,3 +305,25 @@ class Bitrix24Client:
 
         logger.debug(f"Found {len(matching_users)} users matching '{query}'")
         return [BitrixUser.model_validate(user) for user in matching_users]
+
+    async def group_get(self, group_id: int) -> BitrixGroup:
+        """Get a workgroup/scrum by ID.
+
+        Args:
+            group_id: Workgroup/Scrum ID
+
+        Returns:
+            BitrixGroup object
+
+        Raises:
+            BitrixAPIError: If group not found or other API error
+        """
+        params = {"FILTER": {"ID": group_id}}
+
+        result = await self._request("sonet_group.get", params)
+
+        # Result is a list of groups
+        if result and isinstance(result, list) and len(result) > 0:
+            return BitrixGroup.model_validate(result[0])
+
+        raise BitrixAPIError(f"Group {group_id} not found", error_code="GROUP_NOT_FOUND")

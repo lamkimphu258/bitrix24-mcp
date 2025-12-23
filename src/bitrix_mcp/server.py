@@ -225,6 +225,28 @@ async def _task_list_by_user(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _group_get(id: int) -> dict[str, Any]:
+    """Get workgroup/scrum details by ID.
+
+    Args:
+        id: Workgroup/Scrum ID
+
+    Returns:
+        Group details including id, name, description, ownerId
+    """
+    client = get_client()
+
+    try:
+        group = await client.group_get(group_id=id)
+        return group.to_result()
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during group get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during group get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 # Register tools with MCP server using descriptive docstrings
 @mcp.tool
 async def task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
@@ -283,3 +305,11 @@ async def task_list_by_user(
         status=status,
         limit=limit,
     )
+
+
+@mcp.tool
+async def group_get(id: int) -> dict[str, Any]:
+    """Get workgroup/scrum details by ID. Use this to get the name of a group/scrum.
+    Returns id, name, description, ownerId, isProject, scrumMasterId.
+    Raises error if group not found."""
+    return await _group_get(id=id)

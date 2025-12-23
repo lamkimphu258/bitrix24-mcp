@@ -115,6 +115,33 @@ class BitrixUser(BaseModel):
         }
 
 
+class BitrixGroup(BaseModel):
+    """Represents a Bitrix24 workgroup/scrum.
+
+    The Bitrix24 sonet_group API returns fields in UPPERCASE format.
+    """
+
+    id: str = Field(alias="ID")
+    name: str = Field(alias="NAME")
+    description: str | None = Field(default=None, alias="DESCRIPTION")
+    owner_id: str | None = Field(default=None, alias="OWNER_ID")
+    project: str | None = Field(default=None, alias="PROJECT")
+    scrum_master_id: str | None = Field(default=None, alias="SCRUM_MASTER_ID")
+
+    model_config = {"populate_by_name": True}
+
+    def to_result(self) -> dict[str, Any]:
+        """Convert to result format for MCP tool response."""
+        return {
+            "id": int(self.id),
+            "name": self.name,
+            "description": self.description,
+            "ownerId": int(self.owner_id) if self.owner_id else None,
+            "isProject": self.project == "Y" if self.project else False,
+            "scrumMasterId": int(self.scrum_master_id) if self.scrum_master_id else None,
+        }
+
+
 class BitrixAPIError(Exception):
     """Exception raised for Bitrix24 API errors."""
 
