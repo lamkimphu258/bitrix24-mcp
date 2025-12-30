@@ -22,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Create FastMCP server instance
-mcp = FastMCP("bitrix24-mcp")
+mcp = FastMCP("bitrix24-lkp-mcp")
 
 # Module-level client (lazy initialization)
 _client: Bitrix24Client | None = None

@@ -43,7 +43,7 @@ The server uses FastMCP's `@mcp.tool` decorator pattern with a lazy-initialized 
 # In server.py
 from fastmcp import FastMCP
 
-mcp = FastMCP("bitrix24-mcp")
+mcp = FastMCP("bitrix24-lkp-mcp")
 
 _client: Bitrix24Client | None = None
 

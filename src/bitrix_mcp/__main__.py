@@ -2,7 +2,7 @@
 
 This module allows running the server as:
     python -m bitrix_mcp
-    uvx bitrix24-mcp
+    uvx bitrix24-lkp-mcp
 """
 
 from .server import mcp
