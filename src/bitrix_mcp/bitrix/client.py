@@ -319,6 +319,55 @@ class Bitrix24Client:
 
         return [BitrixTaskComment.model_validate(item) for item in result]
 
+    async def task_commentitem_add(
+        self,
+        task_id: int,
+        message: str,
+        author_id: int | None = None,
+    ) -> int:
+        """Add a comment to a task.
+
+        Args:
+            task_id: Task ID
+            message: Comment text
+            author_id: Optional author user ID. If not provided, Bitrix uses the webhook user.
+
+        Returns:
+            Created comment ID
+
+        Raises:
+            BitrixAPIError: If the response format is unexpected
+        """
+        # Parameter order may matter for some Bitrix24 legacy task.commentitem methods.
+        fields: dict[str, Any] = {"POST_MESSAGE": message}
+        if author_id is not None:
+            fields["AUTHOR_ID"] = author_id
+
+        params: dict[str, Any] = {"TASKID": task_id, "fields": fields}
+        result = await self._request("task.commentitem.add", params)
+
+        if isinstance(result, (int, str)):
+            return int(result)
+
+        if isinstance(result, dict):
+            comment_id = (
+                result.get("ID")
+                or result.get("id")
+                or result.get("commentId")
+                or result.get("COMMENT_ID")
+            )
+            if comment_id is None:
+                raise BitrixAPIError(
+                    "Unexpected response format from task.commentitem.add",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+            return int(comment_id)
+
+        raise BitrixAPIError(
+            "Unexpected response format from task.commentitem.add",
+            error_code="UNEXPECTED_RESPONSE",
+        )
+
     async def _user_list_all(self) -> list[dict[str, Any]]:
         """Fetch all users with automatic pagination.
 

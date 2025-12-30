@@ -10,6 +10,16 @@ def mock_webhook_url() -> str:
     return "https://test.bitrix24.com/rest/1/test-token/"
 
 
+@pytest.fixture(autouse=True)
+def _force_mock_webhook_env(monkeypatch: pytest.MonkeyPatch, mock_webhook_url: str) -> None:
+    """Force tests to use a safe, mock webhook URL.
+
+    This prevents accidentally running tests against a real Bitrix24 inbound webhook
+    if the developer has BITRIX_WEBHOOK_URL set in their environment.
+    """
+    monkeypatch.setenv("BITRIX_WEBHOOK_URL", mock_webhook_url)
+
+
 @pytest.fixture
 def sample_task_list_response() -> dict:
     """Return sample response for tasks.task.list API."""
@@ -96,6 +106,12 @@ def sample_task_comment_list_response() -> dict:
 
 
 @pytest.fixture
+def sample_task_comment_add_response() -> dict:
+    """Return sample response for task.commentitem.add API."""
+    return {"result": "3158"}
+
+
+@pytest.fixture
 def sample_task_add_response() -> dict:
     """Return sample response for tasks.task.add API."""
     return {
@@ -120,10 +136,14 @@ def sample_task_data() -> dict:
     }
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_bitrix_api(mock_webhook_url):
-    """Create a respx mock for Bitrix24 API."""
-    with respx.mock(base_url=mock_webhook_url) as respx_mock:
+    """Create a respx mock for Bitrix24 API.
+
+    This fixture is autouse to ensure NO tests can make real network requests.
+    Any HTTPX request not explicitly mocked will fail fast.
+    """
+    with respx.mock(base_url=mock_webhook_url, assert_all_mocked=True) as respx_mock:
         yield respx_mock
 
 

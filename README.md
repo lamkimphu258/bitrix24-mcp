@@ -141,6 +141,15 @@ Also includes `attachmentFileIds` (from Bitrix24 `UF_TASK_WEBDAV_FILES`; empty l
 | `id` | int | Yes | Task ID |
 | `includeComments` | bool | No | Include task comments (legacy API via `task.commentitem.getlist`) |
 
+### task_comment_add
+
+Add a comment to a task (via `task.commentitem.add`).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Task ID |
+| `message` | string | Yes | Comment text |
+
 ### task_create
 
 Create a new task or subtask. Use `parentId` to create a subtask under an existing task.

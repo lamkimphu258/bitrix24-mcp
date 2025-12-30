@@ -7,6 +7,7 @@ from bitrix_mcp import server
 from bitrix_mcp.bitrix.client import Bitrix24Client
 from bitrix_mcp.server import (
     _group_search,
+    _task_comment_add,
     _task_create,
     _task_get,
     _task_list_by_user,
@@ -215,6 +216,44 @@ class TestTaskGet:
         assert body["ORDER"]["POST_DATE"] == "asc"
 
 
+class TestTaskCommentAdd:
+    """Tests for task_comment_add tool."""
+
+    @pytest.mark.asyncio
+    async def test_task_comment_add_basic(
+        self, setup_client, sample_task_comment_add_response, mock_bitrix_api
+    ):
+        """task_comment_add should return created commentId and send correct payload."""
+        mock_bitrix_api.post("task.commentitem.add").mock(
+            return_value=Response(200, json=sample_task_comment_add_response)
+        )
+
+        result = await _task_comment_add(id=456, message="Hello from tool tests")
+
+        assert result["taskId"] == 456
+        assert result["commentId"] == 3158
+        assert result["created"] is True
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["TASKID"] == 456
+        assert body["fields"]["POST_MESSAGE"] == "Hello from tool tests"
+
+    @pytest.mark.asyncio
+    async def test_task_comment_add_api_error(
+        self, setup_client, api_error_response, mock_bitrix_api
+    ):
+        """task_comment_add should re-raise API errors as RuntimeError."""
+        mock_bitrix_api.post("task.commentitem.add").mock(
+            return_value=Response(200, json=api_error_response)
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error"):
+            await _task_comment_add(id=456, message="This will fail")
+
+
 class TestTaskCreate:
     """Tests for task_create tool."""
 
@@ -328,10 +367,11 @@ class TestTaskCreate:
 class TestToolClientManagement:
     """Tests for tool client management."""
 
-    def test_get_client_without_init_raises(self):
-        """get_client should raise if not initialized."""
+    def test_get_client_without_env_var_raises(self, monkeypatch):
+        """get_client should raise if it cannot be initialized (missing env var)."""
         server._client = None  # Reset client
-        with pytest.raises(RuntimeError, match="client not initialized"):
+        monkeypatch.delenv("BITRIX_WEBHOOK_URL", raising=False)
+        with pytest.raises(RuntimeError, match="Bitrix24 client not initialized"):
             get_client()
 
     def test_set_client_stores_client(self, mock_webhook_url):

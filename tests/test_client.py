@@ -212,6 +212,45 @@ class TestTaskAdd:
         assert fields["PRIORITY"] == sample_task_data["priority"]
 
 
+class TestTaskCommentItemAdd:
+    """Tests for task_commentitem_add method."""
+
+    @pytest.mark.asyncio
+    async def test_task_commentitem_add_success(
+        self, mock_webhook_url, sample_task_comment_add_response, mock_bitrix_api
+    ):
+        """task_commentitem_add should return created comment ID."""
+        mock_bitrix_api.post("task.commentitem.add").mock(
+            return_value=Response(200, json=sample_task_comment_add_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            comment_id = await client.task_commentitem_add(task_id=456, message="Hello from tests")
+
+        assert comment_id == 3158
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["TASKID"] == 456
+        assert body["fields"]["POST_MESSAGE"] == "Hello from tests"
+
+    @pytest.mark.asyncio
+    async def test_task_commentitem_add_accepts_wrapped_response(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """task_commentitem_add should handle portals that wrap the comment id in an object."""
+        mock_bitrix_api.post("task.commentitem.add").mock(
+            return_value=Response(200, json={"result": {"ID": "4001"}})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            comment_id = await client.task_commentitem_add(task_id=456, message="Wrapped")
+
+        assert comment_id == 4001
+
+
 class TestUserGet:
     """Tests for user_get method."""
 

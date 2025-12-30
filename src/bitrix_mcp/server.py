@@ -127,6 +127,29 @@ async def _task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _task_comment_add(id: int, message: str) -> dict[str, Any]:
+    """Add a comment to a task.
+
+    Args:
+        id: Task ID
+        message: Comment text
+
+    Returns:
+        Object containing taskId, commentId, and created flag
+    """
+    client = get_client()
+
+    try:
+        comment_id = await client.task_commentitem_add(task_id=id, message=message)
+        return {"taskId": id, "commentId": comment_id, "created": True}
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during task comment add: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during task comment add: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _task_create(
     title: str,
     responsibleId: int,
@@ -280,6 +303,12 @@ async def task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
         includeComments: If True, include task comments (legacy API) in the response
     """
     return await _task_get(id=id, includeComments=includeComments)
+
+
+@mcp.tool
+async def task_comment_add(id: int, message: str) -> dict[str, Any]:
+    """Add a comment to a task. Returns the created commentId."""
+    return await _task_comment_add(id=id, message=message)
 
 
 @mcp.tool
