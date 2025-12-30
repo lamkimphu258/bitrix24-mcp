@@ -163,11 +163,49 @@ class TestTaskGet:
         assert result["description"] == "Any new sign up user, send welcome email."
         assert result["responsibleId"] == 7
         assert result["groupId"] == 5
+        assert result["stageId"] == 11
         assert result["status"] == "pending"
         assert result["priority"] == "medium"
         assert result["attachmentFileIds"] == [1065, 1077]
         # URL should be generated from base_url
         assert result["url"] == "https://test.bitrix24.com/workgroups/group/5/tasks/task/view/456/"
+
+        # Verify STAGE_ID was requested in select
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert "STAGE_ID" in body["select"]
+
+    @pytest.mark.asyncio
+    async def test_task_get_webdav_files_false_returns_empty_list(
+        self, setup_client, mock_bitrix_api
+    ):
+        """task_get should treat ufTaskWebdavFiles=false as an empty attachment list."""
+        response = {
+            "result": {
+                "task": {
+                    "id": "456",
+                    "title": "Auto Send welcome email",
+                    "description": "Any new sign up user, send welcome email.",
+                    "responsibleId": "7",
+                    "groupId": "5",
+                    "stageId": "11",
+                    "createdBy": "1",
+                    "status": "2",
+                    "deadline": None,
+                    "parentId": None,
+                    "priority": "1",
+                    "ufTaskWebdavFiles": False,
+                }
+            }
+        }
+        mock_bitrix_api.post("tasks.task.get").mock(return_value=Response(200, json=response))
+
+        result = await _task_get(id=456)
+
+        assert result["attachmentFileIds"] == []
+        assert result["stageId"] == 11
 
     @pytest.mark.asyncio
     async def test_task_get_with_description(

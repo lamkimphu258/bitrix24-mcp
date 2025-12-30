@@ -136,6 +136,7 @@ Returns matching tasks with `id`, `title`, `responsibleId`, `groupId`, `parentId
 
 Get detailed information about a task by ID. Returns title, description, assignee, and group.
 Also includes `attachmentFileIds` (from Bitrix24 `UF_TASK_WEBDAV_FILES`; empty list if none).
+Also includes `stageId` (Kanban stage ID, if the task is in a project with stages; otherwise `null`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

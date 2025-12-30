@@ -3,7 +3,7 @@
 from enum import IntEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TaskStatus(IntEnum):
@@ -57,6 +57,7 @@ class BitrixTask(BaseModel):
     description: str | None = None
     responsible_id: str | None = Field(default=None, alias="responsibleId")
     group_id: str | None = Field(default=None, alias="groupId")
+    stage_id: str | None = Field(default=None, alias="stageId")
     parent_id: str | None = Field(default=None, alias="parentId")
     status: str
     priority: str | None = None
@@ -65,6 +66,18 @@ class BitrixTask(BaseModel):
     attachment_file_ids: list[int] | None = Field(default=None, alias="ufTaskWebdavFiles")
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("attachment_file_ids", mode="before")
+    @classmethod
+    def _normalize_attachment_file_ids(cls, v: Any) -> Any:  # noqa: ANN401
+        """Normalize UF_TASK_WEBDAV_FILES.
+
+        Bitrix24 sometimes returns `false` for ufTaskWebdavFiles when there are no attachments.
+        We normalize that to an empty list so Pydantic validation and tool output are stable.
+        """
+        if v is False or v is None:
+            return []
+        return v
 
     def get_url(self, base_url: str) -> str | None:
         """Generate Bitrix24 task URL.
@@ -109,6 +122,7 @@ class BitrixTask(BaseModel):
             "description": self.description,
             "responsibleId": int(self.responsible_id) if self.responsible_id else None,
             "groupId": int(self.group_id) if self.group_id else None,
+            "stageId": int(self.stage_id) if self.stage_id else None,
             "parentId": int(self.parent_id) if self.parent_id else None,
             "status": TaskStatus.to_string(int(self.status)),
             "priority": TaskPriority.to_string(int(self.priority)) if self.priority else "medium",

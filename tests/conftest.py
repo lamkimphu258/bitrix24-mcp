@@ -56,6 +56,7 @@ def sample_task_get_response() -> dict:
                 "description": "Any new sign up user, send welcome email.",
                 "responsibleId": "7",
                 "groupId": "5",
+                "stageId": "11",
                 "createdBy": "1",
                 "status": "2",
                 "deadline": None,

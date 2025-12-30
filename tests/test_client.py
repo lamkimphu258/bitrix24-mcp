@@ -145,6 +145,37 @@ class TestTaskGet:
         assert task.title == "Auto Send welcome email"
         assert task.description == "Any new sign up user, send welcome email."
         assert task.responsible_id == "7"
+        assert task.stage_id == "11"
+
+    @pytest.mark.asyncio
+    async def test_task_get_webdav_files_false_is_normalized(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """task_get should tolerate ufTaskWebdavFiles=false from Bitrix24."""
+        response = {
+            "result": {
+                "task": {
+                    "id": "456",
+                    "title": "Auto Send welcome email",
+                    "description": "Any new sign up user, send welcome email.",
+                    "responsibleId": "7",
+                    "groupId": "5",
+                    "stageId": "11",
+                    "createdBy": "1",
+                    "status": "2",
+                    "deadline": None,
+                    "parentId": None,
+                    "priority": "1",
+                    "ufTaskWebdavFiles": False,
+                }
+            }
+        }
+        mock_bitrix_api.post("tasks.task.get").mock(return_value=Response(200, json=response))
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            task = await client.task_get(task_id=456)
+
+        assert task.attachment_file_ids == []
 
     @pytest.mark.asyncio
     async def test_task_get_not_found(self, mock_webhook_url, api_error_response, mock_bitrix_api):
