@@ -213,6 +213,45 @@ class TestTaskAdd:
         assert fields["PRIORITY"] == sample_task_data["priority"]
 
 
+class TestTaskCommentItemAdd:
+    """Tests for task_commentitem_add method."""
+
+    @pytest.mark.asyncio
+    async def test_task_commentitem_add_success(
+        self, mock_webhook_url, sample_task_comment_add_response, mock_bitrix_api
+    ):
+        """task_commentitem_add should return created comment ID."""
+        mock_bitrix_api.post("task.commentitem.add").mock(
+            return_value=Response(200, json=sample_task_comment_add_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            comment_id = await client.task_commentitem_add(task_id=456, message="Hello from tests")
+
+        assert comment_id == 3158
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["TASKID"] == 456
+        assert body["fields"]["POST_MESSAGE"] == "Hello from tests"
+
+    @pytest.mark.asyncio
+    async def test_task_commentitem_add_accepts_wrapped_response(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """task_commentitem_add should handle portals that wrap the comment id in an object."""
+        mock_bitrix_api.post("task.commentitem.add").mock(
+            return_value=Response(200, json={"result": {"ID": "4001"}})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            comment_id = await client.task_commentitem_add(task_id=456, message="Wrapped")
+
+        assert comment_id == 4001
+
+
 class TestUserGet:
     """Tests for user_get method."""
 
@@ -350,53 +389,40 @@ class TestErrorHandling:
                 await client.task_list()
 
 
-class TestGroupGet:
-    """Tests for group_get method."""
+class TestGroupSearch:
+    """Tests for group_search method."""
 
     @pytest.mark.asyncio
-    async def test_group_get_success(
-        self, mock_webhook_url, sample_group_get_response, mock_bitrix_api
+    async def test_group_search_success(
+        self, mock_webhook_url, sample_group_search_response, mock_bitrix_api
     ):
-        """group_get should return group details."""
+        """group_search should return matching groups (limited)."""
         mock_bitrix_api.post("sonet_group.get").mock(
-            return_value=Response(200, json=sample_group_get_response)
+            return_value=Response(200, json=sample_group_search_response)
         )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
-            group = await client.group_get(group_id=205)
+            groups = await client.group_search(query="MusicFlowx", limit=1)
 
-        assert group.id == "205"
-        assert group.name == "MusicFlowx Development"
-        assert group.description == "Development tasks for MusicFlowx platform"
-        assert group.owner_id == "22"
-        assert group.project == "Y"
-        assert group.scrum_master_id == "1665"
+        assert len(groups) == 1
+        assert groups[0].id == "205"
+        assert groups[0].name == "MusicFlowx Development"
 
     @pytest.mark.asyncio
-    async def test_group_get_not_found(self, mock_webhook_url, mock_bitrix_api):
-        """group_get should raise error for non-existent group."""
-        mock_bitrix_api.post("sonet_group.get").mock(
-            return_value=Response(200, json={"result": []})
-        )
-
-        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
-            with pytest.raises(BitrixAPIError, match="Group 999 not found"):
-                await client.group_get(group_id=999)
-
-    @pytest.mark.asyncio
-    async def test_group_get_filter_params(
-        self, mock_webhook_url, sample_group_get_response, mock_bitrix_api
+    async def test_group_search_filter_params(
+        self, mock_webhook_url, sample_group_search_response, mock_bitrix_api
     ):
-        """group_get should send correct filter parameters."""
+        """group_search should send correct filter parameters."""
         mock_bitrix_api.post("sonet_group.get").mock(
-            return_value=Response(200, json=sample_group_get_response)
+            return_value=Response(200, json=sample_group_search_response)
         )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
-            await client.group_get(group_id=205)
+            await client.group_search(query="MusicFlowx", limit=10)
 
         import json
 
         request = mock_bitrix_api.calls[0].request
         body = json.loads(request.content)
-        assert body["FILTER"]["ID"] == 205
+        assert body["FILTER"]["%NAME"] == "MusicFlowx"
+        assert body["ORDER"]["NAME"] == "ASC"

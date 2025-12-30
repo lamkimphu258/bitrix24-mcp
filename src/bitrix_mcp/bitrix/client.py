@@ -9,7 +9,14 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from .types import BitrixAPIError, BitrixConnectionError, BitrixGroup, BitrixTask, BitrixUser
+from .types import (
+    BitrixAPIError,
+    BitrixConnectionError,
+    BitrixGroup,
+    BitrixTask,
+    BitrixTaskComment,
+    BitrixUser,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +68,7 @@ class Bitrix24Client:
         "DEADLINE",
         "PARENT_ID",
         "PRIORITY",
+        "UF_TASK_WEBDAV_FILES",
     ]
 
     def __init__(self, webhook_url: str | None = None):
@@ -273,6 +281,93 @@ class Bitrix24Client:
             return int(task_result.get("id", task_result.get("ID", 0)))
         return int(task_result)
 
+    async def task_commentitem_getlist(
+        self,
+        task_id: int,
+        order: dict[str, str] | None = None,
+        filter: dict[str, Any] | None = None,
+    ) -> list[BitrixTaskComment]:
+        """Get a list of comments for a task.
+
+        Note:
+            Bitrix24 marks task.commentitem.getlist as legacy for the "new task card"
+            UI. Some portals may require using chat APIs instead. We still use this
+            method because it is the dedicated REST endpoint for task comments.
+
+        Args:
+            task_id: Task ID
+            order: Optional sorting object (e.g., {"POST_DATE": "asc"})
+            filter: Optional filter object
+
+        Returns:
+            List of BitrixTaskComment objects
+        """
+        # Parameter order matters for this method in Bitrix24.
+        params: dict[str, Any] = {"TASKID": task_id}
+        if order is not None:
+            params["ORDER"] = order
+        if filter is not None:
+            params["FILTER"] = filter
+
+        result = await self._request("task.commentitem.getlist", params)
+
+        if not isinstance(result, list):
+            raise BitrixAPIError(
+                "Unexpected response format from task.commentitem.getlist",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        return [BitrixTaskComment.model_validate(item) for item in result]
+
+    async def task_commentitem_add(
+        self,
+        task_id: int,
+        message: str,
+        author_id: int | None = None,
+    ) -> int:
+        """Add a comment to a task.
+
+        Args:
+            task_id: Task ID
+            message: Comment text
+            author_id: Optional author user ID. If not provided, Bitrix uses the webhook user.
+
+        Returns:
+            Created comment ID
+
+        Raises:
+            BitrixAPIError: If the response format is unexpected
+        """
+        # Parameter order may matter for some Bitrix24 legacy task.commentitem methods.
+        fields: dict[str, Any] = {"POST_MESSAGE": message}
+        if author_id is not None:
+            fields["AUTHOR_ID"] = author_id
+
+        params: dict[str, Any] = {"TASKID": task_id, "fields": fields}
+        result = await self._request("task.commentitem.add", params)
+
+        if isinstance(result, (int, str)):
+            return int(result)
+
+        if isinstance(result, dict):
+            comment_id = (
+                result.get("ID")
+                or result.get("id")
+                or result.get("commentId")
+                or result.get("COMMENT_ID")
+            )
+            if comment_id is None:
+                raise BitrixAPIError(
+                    "Unexpected response format from task.commentitem.add",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+            return int(comment_id)
+
+        raise BitrixAPIError(
+            "Unexpected response format from task.commentitem.add",
+            error_code="UNEXPECTED_RESPONSE",
+        )
+
     async def _user_list_all(self) -> list[dict[str, Any]]:
         """Fetch all users with automatic pagination.
 
@@ -328,24 +423,30 @@ class Bitrix24Client:
         logger.debug(f"Found {len(matching_users)} users matching '{query}'")
         return [BitrixUser.model_validate(user) for user in matching_users]
 
-    async def group_get(self, group_id: int) -> BitrixGroup:
-        """Get a workgroup/scrum by ID.
+    async def group_search(self, query: str, limit: int = 10) -> list[BitrixGroup]:
+        """Search workgroups/scrums by name.
 
         Args:
-            group_id: Workgroup/Scrum ID
+            query: Group name query (substring match)
+            limit: Maximum number of results to return
 
         Returns:
-            BitrixGroup object
-
-        Raises:
-            BitrixAPIError: If group not found or other API error
+            List of BitrixGroup objects
         """
-        params = {"FILTER": {"ID": group_id}}
+        params = {
+            "FILTER": {"%NAME": query},
+            "ORDER": {"NAME": "ASC"},
+        }
 
         result = await self._request("sonet_group.get", params)
 
-        # Result is a list of groups
-        if result and isinstance(result, list) and len(result) > 0:
-            return BitrixGroup.model_validate(result[0])
+        groups_data: list[dict[str, Any]] = []
+        if isinstance(result, list):
+            groups_data = [g for g in result if isinstance(g, dict)]
+        elif isinstance(result, dict):
+            nested = result.get("result")
+            if isinstance(nested, list):
+                groups_data = [g for g in nested if isinstance(g, dict)]
 
-        raise BitrixAPIError(f"Group {group_id} not found", error_code="GROUP_NOT_FOUND")
+        groups = [BitrixGroup.model_validate(group) for group in groups_data]
+        return groups[: max(limit, 0)]

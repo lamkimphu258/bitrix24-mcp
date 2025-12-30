@@ -93,26 +93,60 @@ async def _task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
-async def _task_get(id: int) -> dict[str, Any]:
+async def _task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
     """Get detailed information about a task by ID.
 
     Args:
         id: Task ID
+        includeComments: If True, include task comments in the response (legacy API)
 
     Returns:
         Task details including id, title, description, responsibleId, groupId, url, etc.
+        If includeComments is True, includes a 'comments' array.
     """
     client = get_client()
     base_url = client.get_base_url()
 
     try:
         task = await client.task_get(task_id=id)
-        return task.to_detail_result(base_url=base_url)
+        result = task.to_detail_result(base_url=base_url)
+
+        if includeComments:
+            comments = await client.task_commentitem_getlist(
+                task_id=id,
+                order={"POST_DATE": "asc"},
+            )
+            result["comments"] = [c.to_result() for c in comments]
+
+        return result
     except BitrixConnectionError as e:
         logger.error(f"Connection error during task get: {e}")
         raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
     except BitrixAPIError as e:
         logger.error(f"API error during task get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _task_comment_add(id: int, message: str) -> dict[str, Any]:
+    """Add a comment to a task.
+
+    Args:
+        id: Task ID
+        message: Comment text
+
+    Returns:
+        Object containing taskId, commentId, and created flag
+    """
+    client = get_client()
+
+    try:
+        comment_id = await client.task_commentitem_add(task_id=id, message=message)
+        return {"taskId": id, "commentId": comment_id, "created": True}
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during task comment add: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during task comment add: {e}")
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
@@ -228,25 +262,26 @@ async def _task_list_by_user(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
-async def _group_get(id: int) -> dict[str, Any]:
-    """Get workgroup/scrum details by ID.
+async def _group_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Search workgroups/scrums by name.
 
     Args:
-        id: Workgroup/Scrum ID
+        query: Group name query (substring match)
+        limit: Maximum number of results to return
 
     Returns:
-        Group details including id, name, description, ownerId
+        List of group matches with id, name, description, ownerId, isProject, scrumMasterId.
     """
     client = get_client()
 
     try:
-        group = await client.group_get(group_id=id)
-        return group.to_result()
+        groups = await client.group_search(query=query, limit=limit)
+        return [group.to_result() for group in groups]
     except BitrixConnectionError as e:
-        logger.error(f"Connection error during group get: {e}")
+        logger.error(f"Connection error during group search: {e}")
         raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
     except BitrixAPIError as e:
-        logger.error(f"API error during group get: {e}")
+        logger.error(f"API error during group search: {e}")
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
@@ -259,10 +294,21 @@ async def task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
 
 
 @mcp.tool
-async def task_get(id: int) -> dict[str, Any]:
+async def task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
     """Get detailed information about a task by ID. Returns title, description,
-    assignee, and group. Use this to read task description for analysis."""
-    return await _task_get(id=id)
+    assignee, and group. Use this to read task description for analysis.
+
+    Args:
+        id: Task ID
+        includeComments: If True, include task comments (legacy API) in the response
+    """
+    return await _task_get(id=id, includeComments=includeComments)
+
+
+@mcp.tool
+async def task_comment_add(id: int, message: str) -> dict[str, Any]:
+    """Add a comment to a task. Returns the created commentId."""
+    return await _task_comment_add(id=id, message=message)
 
 
 @mcp.tool
@@ -311,8 +357,10 @@ async def task_list_by_user(
 
 
 @mcp.tool
-async def group_get(id: int) -> dict[str, Any]:
-    """Get workgroup/scrum details by ID. Use this to get the name of a group/scrum.
-    Returns id, name, description, ownerId, isProject, scrumMasterId.
-    Raises error if group not found."""
-    return await _group_get(id=id)
+async def group_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Search for workgroups/scrums by name.
+
+    Use this when the user provides a group name (and does not know the ID).
+    Returns matching groups with id, name, description, ownerId, isProject, scrumMasterId.
+    """
+    return await _group_search(query=query, limit=limit)

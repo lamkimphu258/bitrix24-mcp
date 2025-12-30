@@ -6,7 +6,8 @@ from httpx import Response
 from bitrix_mcp import server
 from bitrix_mcp.bitrix.client import Bitrix24Client
 from bitrix_mcp.server import (
-    _group_get,
+    _group_search,
+    _task_comment_add,
     _task_create,
     _task_get,
     _task_list_by_user,
@@ -162,6 +163,7 @@ class TestTaskGet:
         assert result["groupId"] == 5
         assert result["status"] == "pending"
         assert result["priority"] == "medium"
+        assert result["attachmentFileIds"] == [1065, 1077]
         # URL should be generated from base_url
         assert result["url"] == "https://test.bitrix24.com/workgroups/group/5/tasks/task/view/456/"
 
@@ -205,6 +207,77 @@ class TestTaskGet:
         result = await _task_get(id=457)
 
         assert result["parentId"] == 456
+
+    @pytest.mark.asyncio
+    async def test_task_get_include_comments(
+        self,
+        setup_client,
+        sample_task_get_response,
+        sample_task_comment_list_response,
+        mock_bitrix_api,
+    ):
+        """task_get should include comments when includeComments=True."""
+        mock_bitrix_api.post("tasks.task.get").mock(
+            return_value=Response(200, json=sample_task_get_response)
+        )
+        mock_bitrix_api.post("task.commentitem.getlist").mock(
+            return_value=Response(200, json=sample_task_comment_list_response)
+        )
+
+        result = await _task_get(id=456, includeComments=True)
+
+        assert "comments" in result
+        assert len(result["comments"]) == 2
+        assert result["comments"][0]["id"] == 3155
+        assert result["comments"][0]["authorId"] == 503
+        assert result["comments"][0]["message"] == "Prepared new photos"
+        assert result["comments"][1]["attachments"][0]["attachmentId"] == 973
+
+        # Verify ORDER was sent (chronological sorting)
+        import json
+
+        comment_call = mock_bitrix_api.calls[1].request
+        body = json.loads(comment_call.content)
+        assert body["TASKID"] == 456
+        assert body["ORDER"]["POST_DATE"] == "asc"
+
+
+class TestTaskCommentAdd:
+    """Tests for task_comment_add tool."""
+
+    @pytest.mark.asyncio
+    async def test_task_comment_add_basic(
+        self, setup_client, sample_task_comment_add_response, mock_bitrix_api
+    ):
+        """task_comment_add should return created commentId and send correct payload."""
+        mock_bitrix_api.post("task.commentitem.add").mock(
+            return_value=Response(200, json=sample_task_comment_add_response)
+        )
+
+        result = await _task_comment_add(id=456, message="Hello from tool tests")
+
+        assert result["taskId"] == 456
+        assert result["commentId"] == 3158
+        assert result["created"] is True
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["TASKID"] == 456
+        assert body["fields"]["POST_MESSAGE"] == "Hello from tool tests"
+
+    @pytest.mark.asyncio
+    async def test_task_comment_add_api_error(
+        self, setup_client, api_error_response, mock_bitrix_api
+    ):
+        """task_comment_add should re-raise API errors as RuntimeError."""
+        mock_bitrix_api.post("task.commentitem.add").mock(
+            return_value=Response(200, json=api_error_response)
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error"):
+            await _task_comment_add(id=456, message="This will fail")
 
 
 class TestTaskCreate:
@@ -320,10 +393,11 @@ class TestTaskCreate:
 class TestToolClientManagement:
     """Tests for tool client management."""
 
-    def test_get_client_without_init_raises(self):
-        """get_client should raise if not initialized."""
+    def test_get_client_without_env_var_raises(self, monkeypatch):
+        """get_client should raise if it cannot be initialized (missing env var)."""
         server._client = None  # Reset client
-        with pytest.raises(RuntimeError, match="client not initialized"):
+        monkeypatch.delenv("BITRIX_WEBHOOK_URL", raising=False)
+        with pytest.raises(RuntimeError, match="Bitrix24 client not initialized"):
             get_client()
 
     def test_set_client_stores_client(self, mock_webhook_url):
@@ -481,31 +555,40 @@ class TestTaskListByUser:
         assert body["limit"] == 25
 
 
-class TestGroupGet:
-    """Tests for group_get tool."""
+class TestGroupSearch:
+    """Tests for group_search tool."""
 
     @pytest.mark.asyncio
-    async def test_group_get_basic(self, setup_client, sample_group_get_response, mock_bitrix_api):
-        """group_get should return formatted group details."""
+    async def test_group_search_basic(
+        self, setup_client, sample_group_search_response, mock_bitrix_api
+    ):
+        """group_search should return formatted group matches."""
         mock_bitrix_api.post("sonet_group.get").mock(
-            return_value=Response(200, json=sample_group_get_response)
+            return_value=Response(200, json=sample_group_search_response)
         )
 
-        result = await _group_get(id=205)
+        results = await _group_search(query="MusicFlowx", limit=10)
 
-        assert result["id"] == 205
-        assert result["name"] == "MusicFlowx Development"
-        assert result["description"] == "Development tasks for MusicFlowx platform"
-        assert result["ownerId"] == 22
-        assert result["isProject"] is True
-        assert result["scrumMasterId"] == 1665
+        assert len(results) == 2
+        assert results[0]["id"] == 205
+        assert results[0]["name"] == "MusicFlowx Development"
+        assert results[1]["id"] == 206
+        assert results[1]["name"] == "MusicFlowx QA"
 
     @pytest.mark.asyncio
-    async def test_group_get_not_found(self, setup_client, mock_bitrix_api):
-        """group_get should raise error for non-existent group."""
+    async def test_group_search_filter_params(
+        self, setup_client, sample_group_search_response, mock_bitrix_api
+    ):
+        """group_search should send correct filter parameters."""
         mock_bitrix_api.post("sonet_group.get").mock(
-            return_value=Response(200, json={"result": []})
+            return_value=Response(200, json=sample_group_search_response)
         )
 
-        with pytest.raises(RuntimeError, match="Bitrix24 API error"):
-            await _group_get(id=999)
+        await _group_search(query="MusicFlowx", limit=10)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["FILTER"]["%NAME"] == "MusicFlowx"
+        assert body["ORDER"]["NAME"] == "ASC"

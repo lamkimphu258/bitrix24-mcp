@@ -62,6 +62,7 @@ class BitrixTask(BaseModel):
     priority: str | None = None
     deadline: str | None = None
     created_by: str | None = Field(default=None, alias="createdBy")
+    attachment_file_ids: list[int] | None = Field(default=None, alias="ufTaskWebdavFiles")
 
     model_config = {"populate_by_name": True}
 
@@ -113,10 +114,68 @@ class BitrixTask(BaseModel):
             "priority": TaskPriority.to_string(int(self.priority)) if self.priority else "medium",
             "deadline": self.deadline,
             "createdBy": int(self.created_by) if self.created_by else None,
+            "attachmentFileIds": self.attachment_file_ids or [],
         }
         if base_url:
             result["url"] = self.get_url(base_url)
         return result
+
+
+class BitrixTaskCommentAttachment(BaseModel):
+    """Represents a file attachment on a task comment."""
+
+    attachment_id: str = Field(alias="ATTACHMENT_ID")
+    name: str = Field(alias="NAME")
+    size: str | None = Field(default=None, alias="SIZE")
+    file_id: str | None = Field(default=None, alias="FILE_ID")
+
+    # These fields may include auth tokens; we intentionally do not expose them in tool output.
+    download_url: str | None = Field(default=None, alias="DOWNLOAD_URL")
+    view_url: str | None = Field(default=None, alias="VIEW_URL")
+
+    model_config = {"populate_by_name": True}
+
+    def to_result(self) -> dict[str, Any]:
+        """Convert to result format for MCP tool response (sanitized)."""
+        return {
+            "attachmentId": int(self.attachment_id),
+            "name": self.name,
+            "size": int(self.size) if self.size else None,
+            "fileId": int(self.file_id) if self.file_id else None,
+        }
+
+
+class BitrixTaskComment(BaseModel):
+    """Represents a Bitrix24 task comment (task.commentitem.*).
+
+    Bitrix24 returns comment fields in UPPERCASE format (e.g., POST_MESSAGE, AUTHOR_ID).
+    """
+
+    id: str = Field(alias="ID")
+    author_id: str | None = Field(default=None, alias="AUTHOR_ID")
+    author_name: str | None = Field(default=None, alias="AUTHOR_NAME")
+    author_email: str | None = Field(default=None, alias="AUTHOR_EMAIL")
+    post_date: str | None = Field(default=None, alias="POST_DATE")
+    post_message: str | None = Field(default=None, alias="POST_MESSAGE")
+    post_message_html: str | None = Field(default=None, alias="POST_MESSAGE_HTML")
+    attached_objects: dict[str, BitrixTaskCommentAttachment] = Field(
+        default_factory=dict, alias="ATTACHED_OBJECTS"
+    )
+
+    model_config = {"populate_by_name": True}
+
+    def to_result(self) -> dict[str, Any]:
+        """Convert to result format for MCP tool response."""
+        return {
+            "id": int(self.id),
+            "authorId": int(self.author_id) if self.author_id else None,
+            "authorName": self.author_name,
+            "authorEmail": self.author_email or None,
+            "postDate": self.post_date,
+            "message": self.post_message,
+            "messageHtml": self.post_message_html,
+            "attachments": [a.to_result() for a in self.attached_objects.values()],
+        }
 
 
 class BitrixUser(BaseModel):

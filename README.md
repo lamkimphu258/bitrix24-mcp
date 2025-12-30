@@ -135,10 +135,21 @@ Returns matching tasks with `id`, `title`, `responsibleId`, `groupId`, `parentId
 ### task_get
 
 Get detailed information about a task by ID. Returns title, description, assignee, and group.
+Also includes `attachmentFileIds` (from Bitrix24 `UF_TASK_WEBDAV_FILES`; empty list if none).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | int | Yes | Task ID |
+| `includeComments` | bool | No | Include task comments (legacy API via `task.commentitem.getlist`) |
+
+### task_comment_add
+
+Add a comment to a task (via `task.commentitem.add`).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Task ID |
+| `message` | string | Yes | Comment text |
 
 ### task_create
 
@@ -173,13 +184,14 @@ Returns tasks with `id`, `title`, `responsibleId`, `groupId`, `parentId`, `statu
 | `status` | string | No | Filter: pending, in_progress, completed, deferred |
 | `limit` | int | No | Maximum results (default: 50) |
 
-### group_get
+### group_search
 
-Get workgroup/scrum details by ID.
+Search for workgroups/scrums by name. Use this when the user provides a group name (not an ID).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `id` | int | Yes | Group ID |
+| `query` | string | Yes | Group name to search for |
+| `limit` | int | No | Maximum results (default: 10) |
 
 ## Example Usage
 
