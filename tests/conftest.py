@@ -51,6 +51,7 @@ def sample_task_get_response() -> dict:
                 "deadline": None,
                 "parentId": None,
                 "priority": "1",
+                "ufTaskWebdavFiles": [1065, 1077],
             }
         }
     }

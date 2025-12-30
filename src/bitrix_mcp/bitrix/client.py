@@ -68,6 +68,7 @@ class Bitrix24Client:
         "DEADLINE",
         "PARENT_ID",
         "PRIORITY",
+        "UF_TASK_WEBDAV_FILES",
     ]
 
     def __init__(self, webhook_url: str | None = None):

@@ -136,6 +136,7 @@ class TestTaskGet:
         assert result["groupId"] == 5
         assert result["status"] == "pending"
         assert result["priority"] == "medium"
+        assert result["attachmentFileIds"] == [1065, 1077]
         # URL should be generated from base_url
         assert result["url"] == "https://test.bitrix24.com/workgroups/group/5/tasks/task/view/456/"
 

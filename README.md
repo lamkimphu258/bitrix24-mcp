@@ -134,6 +134,7 @@ Search for tasks by title. Use this to find a task when user provides task name.
 ### task_get
 
 Get detailed information about a task by ID. Returns title, description, assignee, and group.
+Also includes `attachmentFileIds` (from Bitrix24 `UF_TASK_WEBDAV_FILES`; empty list if none).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

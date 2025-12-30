@@ -62,6 +62,7 @@ class BitrixTask(BaseModel):
     priority: str | None = None
     deadline: str | None = None
     created_by: str | None = Field(default=None, alias="createdBy")
+    attachment_file_ids: list[int] | None = Field(default=None, alias="ufTaskWebdavFiles")
 
     model_config = {"populate_by_name": True}
 
@@ -112,6 +113,7 @@ class BitrixTask(BaseModel):
             "priority": TaskPriority.to_string(int(self.priority)) if self.priority else "medium",
             "deadline": self.deadline,
             "createdBy": int(self.created_by) if self.created_by else None,
+            "attachmentFileIds": self.attachment_file_ids or [],
         }
         if base_url:
             result["url"] = self.get_url(base_url)
