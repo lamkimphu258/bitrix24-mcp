@@ -373,24 +373,30 @@ class Bitrix24Client:
         logger.debug(f"Found {len(matching_users)} users matching '{query}'")
         return [BitrixUser.model_validate(user) for user in matching_users]
 
-    async def group_get(self, group_id: int) -> BitrixGroup:
-        """Get a workgroup/scrum by ID.
+    async def group_search(self, query: str, limit: int = 10) -> list[BitrixGroup]:
+        """Search workgroups/scrums by name.
 
         Args:
-            group_id: Workgroup/Scrum ID
+            query: Group name query (substring match)
+            limit: Maximum number of results to return
 
         Returns:
-            BitrixGroup object
-
-        Raises:
-            BitrixAPIError: If group not found or other API error
+            List of BitrixGroup objects
         """
-        params = {"FILTER": {"ID": group_id}}
+        params = {
+            "FILTER": {"%NAME": query},
+            "ORDER": {"NAME": "ASC"},
+        }
 
         result = await self._request("sonet_group.get", params)
 
-        # Result is a list of groups
-        if result and isinstance(result, list) and len(result) > 0:
-            return BitrixGroup.model_validate(result[0])
+        groups_data: list[dict[str, Any]] = []
+        if isinstance(result, list):
+            groups_data = [g for g in result if isinstance(g, dict)]
+        elif isinstance(result, dict):
+            nested = result.get("result")
+            if isinstance(nested, list):
+                groups_data = [g for g in nested if isinstance(g, dict)]
 
-        raise BitrixAPIError(f"Group {group_id} not found", error_code="GROUP_NOT_FOUND")
+        groups = [BitrixGroup.model_validate(group) for group in groups_data]
+        return groups[: max(limit, 0)]

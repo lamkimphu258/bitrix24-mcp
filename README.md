@@ -172,13 +172,14 @@ List tasks assigned to a specific user.
 | `status` | string | No | Filter: pending, in_progress, completed, deferred |
 | `limit` | int | No | Maximum results (default: 50) |
 
-### group_get
+### group_search
 
-Get workgroup/scrum details by ID.
+Search for workgroups/scrums by name. Use this when the user provides a group name (not an ID).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `id` | int | Yes | Group ID |
+| `query` | string | Yes | Group name to search for |
+| `limit` | int | No | Maximum results (default: 10) |
 
 ## Example Usage
 

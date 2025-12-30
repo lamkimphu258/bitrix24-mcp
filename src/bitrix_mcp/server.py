@@ -239,25 +239,26 @@ async def _task_list_by_user(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
-async def _group_get(id: int) -> dict[str, Any]:
-    """Get workgroup/scrum details by ID.
+async def _group_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Search workgroups/scrums by name.
 
     Args:
-        id: Workgroup/Scrum ID
+        query: Group name query (substring match)
+        limit: Maximum number of results to return
 
     Returns:
-        Group details including id, name, description, ownerId
+        List of group matches with id, name, description, ownerId, isProject, scrumMasterId.
     """
     client = get_client()
 
     try:
-        group = await client.group_get(group_id=id)
-        return group.to_result()
+        groups = await client.group_search(query=query, limit=limit)
+        return [group.to_result() for group in groups]
     except BitrixConnectionError as e:
-        logger.error(f"Connection error during group get: {e}")
+        logger.error(f"Connection error during group search: {e}")
         raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
     except BitrixAPIError as e:
-        logger.error(f"API error during group get: {e}")
+        logger.error(f"API error during group search: {e}")
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
@@ -327,8 +328,10 @@ async def task_list_by_user(
 
 
 @mcp.tool
-async def group_get(id: int) -> dict[str, Any]:
-    """Get workgroup/scrum details by ID. Use this to get the name of a group/scrum.
-    Returns id, name, description, ownerId, isProject, scrumMasterId.
-    Raises error if group not found."""
-    return await _group_get(id=id)
+async def group_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Search for workgroups/scrums by name.
+
+    Use this when the user provides a group name (and does not know the ID).
+    Returns matching groups with id, name, description, ownerId, isProject, scrumMasterId.
+    """
+    return await _group_search(query=query, limit=limit)

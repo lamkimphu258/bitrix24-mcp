@@ -217,8 +217,8 @@ def sample_user_list_page2() -> dict:
 
 
 @pytest.fixture
-def sample_group_get_response() -> dict:
-    """Return sample response for sonet_group.get API."""
+def sample_group_search_response() -> dict:
+    """Return sample response for searching groups via sonet_group.get."""
     return {
         "result": [
             {
@@ -228,6 +228,14 @@ def sample_group_get_response() -> dict:
                 "OWNER_ID": "22",
                 "PROJECT": "Y",
                 "SCRUM_MASTER_ID": "1665",
-            }
+            },
+            {
+                "ID": "206",
+                "NAME": "MusicFlowx QA",
+                "DESCRIPTION": "QA tasks for MusicFlowx platform",
+                "OWNER_ID": "23",
+                "PROJECT": "Y",
+                "SCRUM_MASTER_ID": "1665",
+            },
         ]
     }

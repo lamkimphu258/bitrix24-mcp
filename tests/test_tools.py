@@ -6,7 +6,7 @@ from httpx import Response
 from bitrix_mcp import server
 from bitrix_mcp.bitrix.client import Bitrix24Client
 from bitrix_mcp.server import (
-    _group_get,
+    _group_search,
     _task_create,
     _task_get,
     _task_list_by_user,
@@ -487,31 +487,40 @@ class TestTaskListByUser:
         assert body["limit"] == 25
 
 
-class TestGroupGet:
-    """Tests for group_get tool."""
+class TestGroupSearch:
+    """Tests for group_search tool."""
 
     @pytest.mark.asyncio
-    async def test_group_get_basic(self, setup_client, sample_group_get_response, mock_bitrix_api):
-        """group_get should return formatted group details."""
+    async def test_group_search_basic(
+        self, setup_client, sample_group_search_response, mock_bitrix_api
+    ):
+        """group_search should return formatted group matches."""
         mock_bitrix_api.post("sonet_group.get").mock(
-            return_value=Response(200, json=sample_group_get_response)
+            return_value=Response(200, json=sample_group_search_response)
         )
 
-        result = await _group_get(id=205)
+        results = await _group_search(query="MusicFlowx", limit=10)
 
-        assert result["id"] == 205
-        assert result["name"] == "MusicFlowx Development"
-        assert result["description"] == "Development tasks for MusicFlowx platform"
-        assert result["ownerId"] == 22
-        assert result["isProject"] is True
-        assert result["scrumMasterId"] == 1665
+        assert len(results) == 2
+        assert results[0]["id"] == 205
+        assert results[0]["name"] == "MusicFlowx Development"
+        assert results[1]["id"] == 206
+        assert results[1]["name"] == "MusicFlowx QA"
 
     @pytest.mark.asyncio
-    async def test_group_get_not_found(self, setup_client, mock_bitrix_api):
-        """group_get should raise error for non-existent group."""
+    async def test_group_search_filter_params(
+        self, setup_client, sample_group_search_response, mock_bitrix_api
+    ):
+        """group_search should send correct filter parameters."""
         mock_bitrix_api.post("sonet_group.get").mock(
-            return_value=Response(200, json={"result": []})
+            return_value=Response(200, json=sample_group_search_response)
         )
 
-        with pytest.raises(RuntimeError, match="Bitrix24 API error"):
-            await _group_get(id=999)
+        await _group_search(query="MusicFlowx", limit=10)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["FILTER"]["%NAME"] == "MusicFlowx"
+        assert body["ORDER"]["NAME"] == "ASC"
