@@ -180,6 +180,39 @@ class TestTaskGet:
 
         assert result["parentId"] == 456
 
+    @pytest.mark.asyncio
+    async def test_task_get_include_comments(
+        self,
+        setup_client,
+        sample_task_get_response,
+        sample_task_comment_list_response,
+        mock_bitrix_api,
+    ):
+        """task_get should include comments when includeComments=True."""
+        mock_bitrix_api.post("tasks.task.get").mock(
+            return_value=Response(200, json=sample_task_get_response)
+        )
+        mock_bitrix_api.post("task.commentitem.getlist").mock(
+            return_value=Response(200, json=sample_task_comment_list_response)
+        )
+
+        result = await _task_get(id=456, includeComments=True)
+
+        assert "comments" in result
+        assert len(result["comments"]) == 2
+        assert result["comments"][0]["id"] == 3155
+        assert result["comments"][0]["authorId"] == 503
+        assert result["comments"][0]["message"] == "Prepared new photos"
+        assert result["comments"][1]["attachments"][0]["attachmentId"] == 973
+
+        # Verify ORDER was sent (chronological sorting)
+        import json
+
+        comment_call = mock_bitrix_api.calls[1].request
+        body = json.loads(comment_call.content)
+        assert body["TASKID"] == 456
+        assert body["ORDER"]["POST_DATE"] == "asc"
+
 
 class TestTaskCreate:
     """Tests for task_create tool."""

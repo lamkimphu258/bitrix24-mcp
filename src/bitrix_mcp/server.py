@@ -93,21 +93,32 @@ async def _task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
-async def _task_get(id: int) -> dict[str, Any]:
+async def _task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
     """Get detailed information about a task by ID.
 
     Args:
         id: Task ID
+        includeComments: If True, include task comments in the response (legacy API)
 
     Returns:
         Task details including id, title, description, responsibleId, groupId, url, etc.
+        If includeComments is True, includes a 'comments' array.
     """
     client = get_client()
     base_url = client.get_base_url()
 
     try:
         task = await client.task_get(task_id=id)
-        return task.to_detail_result(base_url=base_url)
+        result = task.to_detail_result(base_url=base_url)
+
+        if includeComments:
+            comments = await client.task_commentitem_getlist(
+                task_id=id,
+                order={"POST_DATE": "asc"},
+            )
+            result["comments"] = [c.to_result() for c in comments]
+
+        return result
     except BitrixConnectionError as e:
         logger.error(f"Connection error during task get: {e}")
         raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
@@ -259,10 +270,15 @@ async def task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
 
 
 @mcp.tool
-async def task_get(id: int) -> dict[str, Any]:
+async def task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
     """Get detailed information about a task by ID. Returns title, description,
-    assignee, and group. Use this to read task description for analysis."""
-    return await _task_get(id=id)
+    assignee, and group. Use this to read task description for analysis.
+
+    Args:
+        id: Task ID
+        includeComments: If True, include task comments (legacy API) in the response
+    """
+    return await _task_get(id=id, includeComments=includeComments)
 
 
 @mcp.tool

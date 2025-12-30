@@ -138,6 +138,7 @@ Get detailed information about a task by ID. Returns title, description, assigne
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | int | Yes | Task ID |
+| `includeComments` | bool | No | Include task comments (legacy API via `task.commentitem.getlist`) |
 
 ### task_create
 

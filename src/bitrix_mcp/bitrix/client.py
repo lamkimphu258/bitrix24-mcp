@@ -9,7 +9,14 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from .types import BitrixAPIError, BitrixConnectionError, BitrixGroup, BitrixTask, BitrixUser
+from .types import (
+    BitrixAPIError,
+    BitrixConnectionError,
+    BitrixGroup,
+    BitrixTask,
+    BitrixTaskComment,
+    BitrixUser,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +279,44 @@ class Bitrix24Client:
         if isinstance(task_result, dict):
             return int(task_result.get("id", task_result.get("ID", 0)))
         return int(task_result)
+
+    async def task_commentitem_getlist(
+        self,
+        task_id: int,
+        order: dict[str, str] | None = None,
+        filter: dict[str, Any] | None = None,
+    ) -> list[BitrixTaskComment]:
+        """Get a list of comments for a task.
+
+        Note:
+            Bitrix24 marks task.commentitem.getlist as legacy for the "new task card"
+            UI. Some portals may require using chat APIs instead. We still use this
+            method because it is the dedicated REST endpoint for task comments.
+
+        Args:
+            task_id: Task ID
+            order: Optional sorting object (e.g., {"POST_DATE": "asc"})
+            filter: Optional filter object
+
+        Returns:
+            List of BitrixTaskComment objects
+        """
+        # Parameter order matters for this method in Bitrix24.
+        params: dict[str, Any] = {"TASKID": task_id}
+        if order is not None:
+            params["ORDER"] = order
+        if filter is not None:
+            params["FILTER"] = filter
+
+        result = await self._request("task.commentitem.getlist", params)
+
+        if not isinstance(result, list):
+            raise BitrixAPIError(
+                "Unexpected response format from task.commentitem.getlist",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        return [BitrixTaskComment.model_validate(item) for item in result]
 
     async def _user_list_all(self) -> list[dict[str, Any]]:
         """Fetch all users with automatic pagination.

@@ -57,6 +57,44 @@ def sample_task_get_response() -> dict:
 
 
 @pytest.fixture
+def sample_task_comment_list_response() -> dict:
+    """Return sample response for task.commentitem.getlist API."""
+    return {
+        "result": [
+            {
+                "POST_MESSAGE_HTML": None,
+                "ID": "3155",
+                "AUTHOR_ID": "503",
+                "AUTHOR_NAME": "John Smith",
+                "AUTHOR_EMAIL": "",
+                "POST_DATE": "2025-07-15T14:30:00+02:00",
+                "POST_MESSAGE": "Prepared new photos",
+                "ATTACHED_OBJECTS": {},
+            },
+            {
+                "POST_MESSAGE_HTML": None,
+                "ID": "3157",
+                "AUTHOR_ID": "503",
+                "AUTHOR_NAME": "John Smith",
+                "AUTHOR_EMAIL": "",
+                "POST_DATE": "2025-07-15T14:31:00+02:00",
+                "POST_MESSAGE": "Photos attached",
+                "ATTACHED_OBJECTS": {
+                    "973": {
+                        "ATTACHMENT_ID": "973",
+                        "NAME": "photo1.png",
+                        "SIZE": "1495700",
+                        "FILE_ID": "4755",
+                        "DOWNLOAD_URL": "/download",
+                        "VIEW_URL": "/view",
+                    }
+                },
+            },
+        ]
+    }
+
+
+@pytest.fixture
 def sample_task_add_response() -> dict:
     """Return sample response for tasks.task.add API."""
     return {
