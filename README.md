@@ -165,6 +165,34 @@ Create a new task or subtask. Use `parentId` to create a subtask under an existi
 | `deadline` | string | No | Deadline (ISO 8601) |
 | `priority` | int | No | 0=Low, 1=Medium, 2=High |
 
+### task_update
+
+Update an existing task (via `tasks.task.update`). At least one updatable field must be provided.
+
+Supports:
+- Main: title, description, priority, status (accepts common synonyms like "in progress", "done")
+- People: assignee (`responsibleId`), participants (`accomplices`), observers (`auditors`)
+- Dates: deadline, planned start/end
+- Project: group/project, parent task
+- Kanban stage: `stageId` (if task is in a project with stages)
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Task ID |
+| `title` | string | No | Task title |
+| `description` | string | No | Task description |
+| `priority` | int | No | 0=Low, 1=Medium, 2=High |
+| `status` | string | No | pending, in_progress, completed, deferred (also accepts: "in progress", "done") |
+| `responsibleId` | int | No | Assignee user ID |
+| `accomplices` | list[int] | No | Participant user IDs |
+| `auditors` | list[int] | No | Observer user IDs |
+| `deadline` | string | No | Deadline (ISO 8601) |
+| `startDatePlan` | string | No | Planned start date (ISO 8601) |
+| `endDatePlan` | string | No | Planned end date (ISO 8601) |
+| `groupId` | int | No | Workgroup/Project ID |
+| `parentId` | int | No | Parent task ID (use 0 to clear) |
+| `stageId` | int | No | Kanban stage ID (use 0 to clear) |
+
 ### user_search
 
 Search for users by name. Use this to find a user's ID when you need to assign tasks.

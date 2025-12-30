@@ -281,6 +281,85 @@ class Bitrix24Client:
             return int(task_result.get("id", task_result.get("ID", 0)))
         return int(task_result)
 
+    async def task_update(
+        self,
+        task_id: int,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        priority: int | None = None,
+        status: int | None = None,
+        responsible_id: int | None = None,
+        accomplices: list[int] | None = None,
+        auditors: list[int] | None = None,
+        deadline: str | None = None,
+        start_date_plan: str | None = None,
+        end_date_plan: str | None = None,
+        group_id: int | None = None,
+        parent_id: int | None = None,
+        stage_id: int | None = None,
+    ) -> Any:
+        """Update an existing task.
+
+        Args:
+            task_id: Task ID to update
+            title: New task title
+            description: New task description (HTML supported)
+            priority: Priority (0=Low, 1=Medium, 2=High)
+            status: Task status code (2=pending, 3=in progress, 4=supposedly completed,
+                5=completed, 6=deferred)
+            responsible_id: Assignee user ID
+            accomplices: List of participant user IDs
+            auditors: List of observer user IDs
+            deadline: Deadline in ISO 8601 format
+            start_date_plan: Planned start date in ISO 8601 format
+            end_date_plan: Planned end date in ISO 8601 format
+            group_id: Workgroup/Project ID
+            parent_id: Parent task ID (0 to clear)
+            stage_id: Kanban stage ID (0 to clear)
+
+        Returns:
+            The raw Bitrix24 result for tasks.task.update. Some portals return a boolean,
+            others return an object containing the updated task.
+
+        Raises:
+            ValueError: If no fields are provided to update
+        """
+        fields: dict[str, Any] = {}
+
+        if title is not None:
+            fields["TITLE"] = title
+        if description is not None:
+            fields["DESCRIPTION"] = description
+        if priority is not None:
+            fields["PRIORITY"] = priority
+        if status is not None:
+            fields["STATUS"] = status
+        if responsible_id is not None:
+            fields["RESPONSIBLE_ID"] = responsible_id
+        if accomplices is not None:
+            fields["ACCOMPLICES"] = accomplices
+        if auditors is not None:
+            fields["AUDITORS"] = auditors
+        if deadline is not None:
+            fields["DEADLINE"] = deadline
+        if start_date_plan is not None:
+            fields["START_DATE_PLAN"] = start_date_plan
+        if end_date_plan is not None:
+            fields["END_DATE_PLAN"] = end_date_plan
+        if group_id is not None:
+            fields["GROUP_ID"] = group_id
+        if parent_id is not None:
+            fields["PARENT_ID"] = parent_id
+        if stage_id is not None:
+            fields["STAGE_ID"] = stage_id
+
+        if not fields:
+            raise ValueError("At least one field must be provided to update a task.")
+
+        params: dict[str, Any] = {"taskId": task_id, "fields": fields}
+        return await self._request("tasks.task.update", params)
+
     async def task_commentitem_getlist(
         self,
         task_id: int,

@@ -194,6 +194,162 @@ async def _task_create(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+def _normalize_status(status: str) -> str:
+    """Normalize a user-provided task status string.
+
+    Args:
+        status: Raw status string (e.g., "In Progress", "done")
+
+    Returns:
+        Normalized status key (e.g., "in_progress")
+    """
+    return status.strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _map_status_to_code(status: str) -> int:
+    """Map a user-friendly status string to Bitrix24 status code.
+
+    Supports common synonyms like "done" and "in progress".
+
+    Args:
+        status: Status string provided by user/tool caller
+
+    Returns:
+        Bitrix24 status code
+
+    Raises:
+        ValueError: If status string is not recognized
+    """
+    normalized = _normalize_status(status)
+
+    # Canonical map for Bitrix24 status codes.
+    base_map: dict[str, int] = {
+        "pending": 2,
+        "in_progress": 3,
+        "supposedly_completed": 4,
+        "completed": 5,
+        "deferred": 6,
+    }
+
+    # Common synonyms / user phrasing.
+    synonyms: dict[str, str] = {
+        "inprogress": "in_progress",
+        "in_progress": "in_progress",
+        "doing": "in_progress",
+        "started": "in_progress",
+        "start": "in_progress",
+        "progress": "in_progress",
+        "done": "completed",
+        "finished": "completed",
+        "complete": "completed",
+        "completed": "completed",
+        "postponed": "deferred",
+        "defer": "deferred",
+        "deferred": "deferred",
+        "todo": "pending",
+        "to_do": "pending",
+        "new": "pending",
+    }
+
+    canonical = synonyms.get(normalized, normalized)
+    if canonical in base_map:
+        return base_map[canonical]
+
+    raise ValueError(f"Unknown task status: {status}")
+
+
+async def _task_update(
+    id: int,
+    title: str | None = None,
+    description: str | None = None,
+    priority: int | None = None,
+    status: str | None = None,
+    responsibleId: int | None = None,
+    accomplices: list[int] | None = None,
+    auditors: list[int] | None = None,
+    deadline: str | None = None,
+    startDatePlan: str | None = None,
+    endDatePlan: str | None = None,
+    groupId: int | None = None,
+    parentId: int | None = None,
+    stageId: int | None = None,
+) -> dict[str, Any]:
+    """Update an existing task.
+
+    Args:
+        id: Task ID
+        title: New task title
+        description: New task description
+        priority: Priority: 0=Low, 1=Medium, 2=High
+        status: Status string: pending, in_progress, completed, deferred
+            (also supports common synonyms like "done")
+        responsibleId: Assignee user ID
+        accomplices: Participant user IDs
+        auditors: Observer user IDs
+        deadline: Deadline in ISO 8601 format
+        startDatePlan: Planned start date in ISO 8601 format
+        endDatePlan: Planned end date in ISO 8601 format
+        groupId: Workgroup/Project ID
+        parentId: Parent task ID (0 to clear)
+        stageId: Kanban stage ID (0 to clear)
+
+    Returns:
+        Object containing id and updated flag.
+    """
+    client = get_client()
+
+    has_any_field = (
+        title is not None
+        or description is not None
+        or priority is not None
+        or status is not None
+        or responsibleId is not None
+        or accomplices is not None
+        or auditors is not None
+        or deadline is not None
+        or startDatePlan is not None
+        or endDatePlan is not None
+        or groupId is not None
+        or parentId is not None
+        or stageId is not None
+    )
+
+    if not has_any_field:
+        raise RuntimeError("At least one field must be provided to update a task.")
+
+    status_code: int | None = None
+    if status is not None:
+        try:
+            status_code = _map_status_to_code(status)
+        except ValueError as e:
+            raise RuntimeError(str(e))
+
+    try:
+        await client.task_update(
+            task_id=id,
+            title=title,
+            description=description,
+            priority=priority,
+            status=status_code,
+            responsible_id=responsibleId,
+            accomplices=accomplices,
+            auditors=auditors,
+            deadline=deadline,
+            start_date_plan=startDatePlan,
+            end_date_plan=endDatePlan,
+            group_id=groupId,
+            parent_id=parentId,
+            stage_id=stageId,
+        )
+        return {"id": id, "updated": True}
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during task update: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during task update: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _user_search(query: str) -> list[dict[str, Any]]:
     """Search for users by name.
 
@@ -331,6 +487,47 @@ async def task_create(
         parentId=parentId,
         deadline=deadline,
         priority=priority,
+    )
+
+
+@mcp.tool
+async def task_update(
+    id: int,
+    title: str | None = None,
+    description: str | None = None,
+    priority: int | None = None,
+    status: str | None = None,
+    responsibleId: int | None = None,
+    accomplices: list[int] | None = None,
+    auditors: list[int] | None = None,
+    deadline: str | None = None,
+    startDatePlan: str | None = None,
+    endDatePlan: str | None = None,
+    groupId: int | None = None,
+    parentId: int | None = None,
+    stageId: int | None = None,
+) -> dict[str, Any]:
+    """Update a task.
+
+    Supports updating main fields (title/description/priority/status), people
+    (assignee/participants/observers), dates (deadline/planned dates), project linking
+    (groupId/parentId), and stageId (Kanban stage).
+    """
+    return await _task_update(
+        id=id,
+        title=title,
+        description=description,
+        priority=priority,
+        status=status,
+        responsibleId=responsibleId,
+        accomplices=accomplices,
+        auditors=auditors,
+        deadline=deadline,
+        startDatePlan=startDatePlan,
+        endDatePlan=endDatePlan,
+        groupId=groupId,
+        parentId=parentId,
+        stageId=stageId,
     )
 
 

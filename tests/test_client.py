@@ -213,6 +213,65 @@ class TestTaskAdd:
         assert fields["PRIORITY"] == sample_task_data["priority"]
 
 
+class TestTaskUpdate:
+    """Tests for task_update method."""
+
+    @pytest.mark.asyncio
+    async def test_task_update_success_sends_fields(self, mock_webhook_url, mock_bitrix_api):
+        """task_update should send correct payload and return raw result."""
+        mock_bitrix_api.post("tasks.task.update").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.task_update(
+                task_id=456,
+                title="Updated title",
+                description="Updated description",
+                priority=2,
+                status=3,
+                responsible_id=7,
+                accomplices=[8, 9],
+                auditors=[10],
+                deadline="2025-12-31T23:59:00+02:00",
+                start_date_plan="2025-12-01T10:00:00+02:00",
+                end_date_plan="2025-12-02T18:00:00+02:00",
+                group_id=5,
+                parent_id=0,
+                stage_id=11,
+            )
+
+        assert result is True
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+
+        assert body["taskId"] == 456
+        fields = body["fields"]
+        assert fields["TITLE"] == "Updated title"
+        assert fields["DESCRIPTION"] == "Updated description"
+        assert fields["PRIORITY"] == 2
+        assert fields["STATUS"] == 3
+        assert fields["RESPONSIBLE_ID"] == 7
+        assert fields["ACCOMPLICES"] == [8, 9]
+        assert fields["AUDITORS"] == [10]
+        assert fields["DEADLINE"] == "2025-12-31T23:59:00+02:00"
+        assert fields["START_DATE_PLAN"] == "2025-12-01T10:00:00+02:00"
+        assert fields["END_DATE_PLAN"] == "2025-12-02T18:00:00+02:00"
+        assert fields["GROUP_ID"] == 5
+        assert fields["PARENT_ID"] == 0
+        assert fields["STAGE_ID"] == 11
+
+    @pytest.mark.asyncio
+    async def test_task_update_requires_at_least_one_field(self, mock_webhook_url):
+        """task_update should raise ValueError when no fields are provided."""
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(ValueError, match="At least one field must be provided"):
+                await client.task_update(task_id=456)
+
+
 class TestTaskCommentItemAdd:
     """Tests for task_commentitem_add method."""
 

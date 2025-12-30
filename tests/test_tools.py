@@ -5,6 +5,7 @@ from httpx import Response
 
 from bitrix_mcp import server
 from bitrix_mcp.bitrix.client import Bitrix24Client
+from bitrix_mcp.bitrix.types import BitrixConnectionError
 from bitrix_mcp.server import (
     _group_search,
     _task_comment_add,
@@ -12,6 +13,7 @@ from bitrix_mcp.server import (
     _task_get,
     _task_list_by_user,
     _task_search,
+    _task_update,
     _user_search,
     get_client,
     set_client,
@@ -388,6 +390,106 @@ class TestTaskCreate:
         assert fields["RESPONSIBLE_ID"] == parent_responsible_id
         assert fields["GROUP_ID"] == parent_group_id
         assert fields["PARENT_ID"] == parent_id
+
+
+class TestTaskUpdate:
+    """Tests for task_update tool."""
+
+    @pytest.mark.asyncio
+    async def test_task_update_basic_sends_fields(self, setup_client, mock_bitrix_api):
+        """task_update should send correct payload and map status synonyms."""
+        mock_bitrix_api.post("tasks.task.update").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        result = await _task_update(
+            id=456,
+            title="Updated title",
+            description="Updated description",
+            priority=2,
+            status="in progress",
+            responsibleId=7,
+            accomplices=[8, 9],
+            auditors=[10],
+            deadline="2025-12-31T23:59:00+02:00",
+            startDatePlan="2025-12-01T10:00:00+02:00",
+            endDatePlan="2025-12-02T18:00:00+02:00",
+            groupId=5,
+            parentId=0,
+            stageId=11,
+        )
+
+        assert result == {"id": 456, "updated": True}
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["taskId"] == 456
+        fields = body["fields"]
+        assert fields["TITLE"] == "Updated title"
+        assert fields["DESCRIPTION"] == "Updated description"
+        assert fields["PRIORITY"] == 2
+        assert fields["STATUS"] == 3  # "in progress" -> in_progress -> 3
+        assert fields["RESPONSIBLE_ID"] == 7
+        assert fields["ACCOMPLICES"] == [8, 9]
+        assert fields["AUDITORS"] == [10]
+        assert fields["DEADLINE"] == "2025-12-31T23:59:00+02:00"
+        assert fields["START_DATE_PLAN"] == "2025-12-01T10:00:00+02:00"
+        assert fields["END_DATE_PLAN"] == "2025-12-02T18:00:00+02:00"
+        assert fields["GROUP_ID"] == 5
+        assert fields["PARENT_ID"] == 0
+        assert fields["STAGE_ID"] == 11
+
+    @pytest.mark.asyncio
+    async def test_task_update_status_done_maps_to_completed(self, setup_client, mock_bitrix_api):
+        """task_update should map 'done' to completed status code."""
+        mock_bitrix_api.post("tasks.task.update").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        await _task_update(id=456, status="done")
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["fields"]["STATUS"] == 5
+
+    @pytest.mark.asyncio
+    async def test_task_update_requires_at_least_one_field(self, setup_client):
+        """task_update should require at least one updatable field."""
+        with pytest.raises(RuntimeError, match="At least one field must be provided"):
+            await _task_update(id=456)
+
+    @pytest.mark.asyncio
+    async def test_task_update_invalid_status_raises(self, setup_client):
+        """task_update should reject unknown status strings."""
+        with pytest.raises(RuntimeError, match="Unknown task status"):
+            await _task_update(id=456, status="banana")
+
+    @pytest.mark.asyncio
+    async def test_task_update_api_error(self, setup_client, api_error_response, mock_bitrix_api):
+        """task_update should re-raise API errors as RuntimeError."""
+        mock_bitrix_api.post("tasks.task.update").mock(
+            return_value=Response(200, json=api_error_response)
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error"):
+            await _task_update(id=456, title="Will fail")
+
+    @pytest.mark.asyncio
+    async def test_task_update_connection_error(self, setup_client, monkeypatch):
+        """task_update should re-raise connection errors as RuntimeError."""
+        client = get_client()
+
+        async def _raise_connection_error(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+            raise BitrixConnectionError("network down")
+
+        monkeypatch.setattr(client, "task_update", _raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _task_update(id=456, title="Test")
 
 
 class TestToolClientManagement:
