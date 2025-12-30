@@ -89,6 +89,7 @@ class BitrixTask(BaseModel):
             "title": self.title,
             "responsibleId": int(self.responsible_id) if self.responsible_id else None,
             "groupId": int(self.group_id) if self.group_id else None,
+            "parentId": int(self.parent_id) if self.parent_id else None,
             "status": TaskStatus.to_string(int(self.status)),
         }
         if base_url:

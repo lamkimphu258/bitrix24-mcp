@@ -125,6 +125,7 @@ env = { "BITRIX_WEBHOOK_URL" = "https://your-domain.bitrix24.com/rest/1/token/" 
 ### task_search
 
 Search for tasks by title. Use this to find a task when user provides task name.
+Returns matching tasks with `id`, `title`, `responsibleId`, `groupId`, `parentId`, `status`, and `url`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -164,6 +165,7 @@ Search for users by name. Use this to find a user's ID when you need to assign t
 ### task_list_by_user
 
 List tasks assigned to a specific user.
+Returns tasks with `id`, `title`, `responsibleId`, `groupId`, `parentId`, `status`, and `url`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

@@ -49,7 +49,7 @@ class Bitrix24Client:
     """Async HTTP client for Bitrix24 REST API."""
 
     # Default fields to select for task operations
-    TASK_LIST_SELECT = ["ID", "TITLE", "RESPONSIBLE_ID", "GROUP_ID", "STATUS"]
+    TASK_LIST_SELECT = ["ID", "TITLE", "RESPONSIBLE_ID", "GROUP_ID", "STATUS", "PARENT_ID"]
     TASK_GET_SELECT = [
         "ID",
         "TITLE",

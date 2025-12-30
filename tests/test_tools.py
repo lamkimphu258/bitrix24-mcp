@@ -44,11 +44,37 @@ class TestTaskSearch:
         assert results[0]["title"] == "Auto Send welcome email"
         assert results[0]["responsibleId"] == 7
         assert results[0]["groupId"] == 5
+        assert results[0]["parentId"] is None
         assert results[0]["status"] == "pending"
         # URL should be generated from base_url
         assert (
             results[0]["url"] == "https://test.bitrix24.com/workgroups/group/5/tasks/task/view/456/"
         )
+
+    @pytest.mark.asyncio
+    async def test_task_search_includes_parent_id(self, setup_client, mock_bitrix_api):
+        """task_search should include parentId when task is a subtask."""
+        response = {
+            "result": {
+                "tasks": [
+                    {
+                        "id": "457",
+                        "title": "Subtask",
+                        "responsibleId": "7",
+                        "groupId": "5",
+                        "status": "2",
+                        "parentId": "456",
+                    }
+                ]
+            }
+        }
+        mock_bitrix_api.post("tasks.task.list").mock(return_value=Response(200, json=response))
+
+        results = await _task_search(query="Subtask")
+
+        assert len(results) == 1
+        assert results[0]["id"] == 457
+        assert results[0]["parentId"] == 456
 
     @pytest.mark.asyncio
     async def test_task_search_with_limit(
@@ -400,6 +426,7 @@ class TestTaskListByUser:
         assert len(results) == 2
         assert results[0]["id"] == 456
         assert results[0]["responsibleId"] == 7
+        assert results[0]["parentId"] is None
         # URL should be generated from base_url
         assert (
             results[0]["url"] == "https://test.bitrix24.com/workgroups/group/5/tasks/task/view/456/"

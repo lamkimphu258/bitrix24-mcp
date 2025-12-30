@@ -51,6 +51,7 @@ class TestWorkflowSearchAndGet:
         assert len(search_results) == 1
         task_id = search_results[0]["id"]
         assert task_id == 456
+        assert search_results[0]["parentId"] is None
 
         # Step 2: Get full task details
         mock_api.post("tasks.task.get").mock(
@@ -185,6 +186,7 @@ class TestFullWorkflow:
 
         search_results = await _task_search(query="Auto Send welcome email")
         parent_task_id = search_results[0]["id"]
+        assert search_results[0]["parentId"] is None
 
         # === STEP 2: Get task details for AI analysis ===
 

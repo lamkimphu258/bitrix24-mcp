@@ -74,7 +74,7 @@ async def _task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
         limit: Maximum number of results (default: 10)
 
     Returns:
-        List of matching tasks with id, title, responsibleId, groupId, status, and url
+        List of matching tasks with id, title, responsibleId, groupId, parentId, status, and url
     """
     client = get_client()
     base_url = client.get_base_url()
@@ -197,7 +197,7 @@ async def _task_list_by_user(
         limit: Maximum number of results (default: 50)
 
     Returns:
-        List of tasks with id, title, responsibleId, groupId, status, and url
+        List of tasks with id, title, responsibleId, groupId, parentId, status, and url
     """
     client = get_client()
     base_url = client.get_base_url()
@@ -254,7 +254,7 @@ async def _group_get(id: int) -> dict[str, Any]:
 @mcp.tool
 async def task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
     """Search for tasks by title. Use this to find a task when user provides task name.
-    Returns matching tasks with id, title, responsibleId, groupId, and status."""
+    Returns matching tasks with id, title, responsibleId, groupId, parentId, and status."""
     return await _task_search(query=query, limit=limit)
 
 

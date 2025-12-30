@@ -123,6 +123,7 @@ class TestTaskList:
 
         body = json.loads(request.content)
         assert body["limit"] == 5
+        assert "PARENT_ID" in body["select"]
 
 
 class TestTaskGet:
