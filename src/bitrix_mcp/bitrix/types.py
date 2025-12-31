@@ -199,6 +199,56 @@ class BitrixScrumKanbanStage(BaseModel):
         }
 
 
+class BitrixScrumEpic(BaseModel):
+    """Represents a Bitrix24 Scrum epic (tasks.api.scrum.epic.*)."""
+
+    id: int
+    group_id: int | None = Field(default=None, alias="groupId")
+    name: str
+    description: str | None = None
+    created_by: int | None = Field(default=None, alias="createdBy")
+    modified_by: int | None = Field(default=None, alias="modifiedBy")
+    color: str | None = None
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+    def to_result(self) -> dict[str, Any]:
+        """Convert to result format for MCP tool response."""
+        return {
+            "id": self.id,
+            "groupId": self.group_id,
+            "name": self.name,
+            "description": self.description,
+            "createdBy": self.created_by,
+            "modifiedBy": self.modified_by,
+            "color": self.color,
+        }
+
+
+class BitrixScrumTask(BaseModel):
+    """Represents Scrum-specific fields for a task (tasks.api.scrum.task.get)."""
+
+    entity_id: int | None = Field(default=None, alias="entityId")
+    story_points: str | None = Field(default=None, alias="storyPoints")
+    epic_id: int | None = Field(default=None, alias="epicId")
+    sort: int | None = None
+    created_by: int | None = Field(default=None, alias="createdBy")
+    modified_by: int | None = Field(default=None, alias="modifiedBy")
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+    def to_result(self) -> dict[str, Any]:
+        """Convert to result format for MCP tool response."""
+        return {
+            "entityId": self.entity_id,
+            "storyPoints": self.story_points,
+            "epicId": self.epic_id,
+            "sort": self.sort,
+            "createdBy": self.created_by,
+            "modifiedBy": self.modified_by,
+        }
+
+
 class BitrixTaskCommentAttachment(BaseModel):
     """Represents a file attachment on a task comment."""
 

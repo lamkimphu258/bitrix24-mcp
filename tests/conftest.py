@@ -193,6 +193,54 @@ def sample_scrum_kanban_get_stages_response() -> dict:
 
 
 @pytest.fixture
+def sample_scrum_epic_list_response() -> dict:
+    """Return sample response for tasks.api.scrum.epic.list API."""
+    return {
+        "result": [
+            {
+                "id": 1,
+                "groupId": 5,
+                "name": "Dashboard",
+                "description": "",
+                "createdBy": 1,
+                "modifiedBy": 1,
+                "color": "#69dafc",
+            },
+            {
+                "id": 2,
+                "groupId": 5,
+                "name": "CMS",
+                "description": "Content management work",
+                "createdBy": 1,
+                "modifiedBy": 1,
+                "color": "#75D900",
+            },
+        ]
+    }
+
+
+@pytest.fixture
+def sample_scrum_task_get_response() -> dict:
+    """Return sample response for tasks.api.scrum.task.get API."""
+    return {
+        "result": {
+            "entityId": 2,
+            "storyPoints": "2",
+            "epicId": 1,
+            "sort": 1,
+            "createdBy": 1,
+            "modifiedBy": 1,
+        }
+    }
+
+
+@pytest.fixture
+def sample_scrum_task_update_response() -> dict:
+    """Return sample response for tasks.api.scrum.task.update API."""
+    return {"result": {"status": "success", "data": True, "errors": []}}
+
+
+@pytest.fixture
 def sample_task_data() -> dict:
     """Return sample task data for creating tasks."""
     return {

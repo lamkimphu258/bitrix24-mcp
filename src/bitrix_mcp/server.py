@@ -546,6 +546,342 @@ async def _task_stages_move_task(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+def _normalize_text(value: str) -> str:
+    """Normalize user-provided free-text for matching."""
+    return value.strip().lower()
+
+
+async def _resolve_scrum_epic_by_name(
+    *,
+    client: Bitrix24Client,
+    group_id: int,
+    epic_name: str,
+) -> tuple[int, str]:
+    """Resolve a Scrum epic by name to an epicId within a group.
+
+    Matching behavior:
+    - Prefer exact match (case-insensitive)
+    - Fallback to substring match
+    - Raise if ambiguous or not found
+    """
+    needle = _normalize_text(epic_name)
+    if not needle:
+        raise RuntimeError("epicName must be non-empty.")
+
+    exact: list[Any] = []
+    partial: list[Any] = []
+    seen_ids: set[int] = set()
+
+    start = 0
+    select = ["ID", "GROUP_ID", "NAME", "DESCRIPTION", "CREATED_BY", "MODIFIED_BY", "COLOR"]
+    while True:
+        epics = await client.scrum_epic_list(
+            filter={"GROUP_ID": group_id},
+            order={"ID": "asc"},
+            select=select,
+            start=start,
+        )
+        if not epics:
+            break
+
+        for epic in epics:
+            if epic.id in seen_ids:
+                continue
+            seen_ids.add(epic.id)
+            name_norm = _normalize_text(epic.name)
+            if name_norm == needle:
+                exact.append(epic)
+                if len(exact) > 1:
+                    break
+            elif needle in name_norm:
+                partial.append(epic)
+
+        if len(exact) > 1:
+            break
+
+        # Bitrix24 uses a static page size of 50 for this method; fewer results means we're done.
+        if len(epics) < 50:
+            break
+
+        start += 50
+
+    if len(exact) == 1:
+        epic = exact[0]
+        return epic.id, epic.name
+
+    if len(exact) > 1:
+        candidates = [{"id": e.id, "name": e.name} for e in exact[:10]]
+        raise RuntimeError(
+            f"Ambiguous epicName '{epic_name}' (groupId={group_id}). Matches: {candidates}. "
+            "Use epicId instead."
+        )
+
+    if len(partial) == 1:
+        epic = partial[0]
+        return epic.id, epic.name
+
+    if len(partial) > 1:
+        partial_sorted = sorted(partial, key=lambda e: (len(e.name or ""), e.id))
+        candidates = [{"id": e.id, "name": e.name} for e in partial_sorted[:10]]
+        raise RuntimeError(
+            f"Ambiguous epicName '{epic_name}' (groupId={group_id}). Matches: {candidates}. "
+            "Use epicId instead."
+        )
+
+    raise RuntimeError(
+        f"No epic found for epicName '{epic_name}' in groupId={group_id}. "
+        "Use scrum_epic_list to discover epics."
+    )
+
+
+async def _scrum_epic_list(
+    groupId: int,
+    query: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List Scrum epics for a group (tasks.api.scrum.epic.list).
+
+    Args:
+        groupId: Scrum group/workgroup ID.
+        query: Optional epic name filter (case-insensitive substring match).
+        limit: Maximum number of results to return (default: 50).
+
+    Returns:
+        List of epics with id, groupId, name, description, createdBy, modifiedBy, color.
+    """
+    if limit <= 0:
+        return []
+
+    client = get_client()
+    needle = _normalize_text(query) if query and query.strip() else None
+
+    start = 0
+    collected: list[Any] = []
+    seen_ids: set[int] = set()
+    select = ["ID", "GROUP_ID", "NAME", "DESCRIPTION", "CREATED_BY", "MODIFIED_BY", "COLOR"]
+
+    try:
+        while len(collected) < limit:
+            epics = await client.scrum_epic_list(
+                filter={"GROUP_ID": groupId},
+                order={"ID": "asc"},
+                select=select,
+                start=start,
+            )
+            if not epics:
+                break
+
+            if needle is None:
+                for epic in epics:
+                    if epic.id in seen_ids:
+                        continue
+                    seen_ids.add(epic.id)
+                    collected.append(epic)
+            else:
+                for epic in epics:
+                    if epic.id in seen_ids:
+                        continue
+                    if needle in _normalize_text(epic.name):
+                        seen_ids.add(epic.id)
+                        collected.append(epic)
+
+            # Bitrix24 uses a static page size of 50; fewer results means we're done.
+            if len(epics) < 50:
+                break
+
+            start += 50
+
+        if needle is not None:
+            collected.sort(
+                key=lambda e: (
+                    0 if _normalize_text(e.name) == needle else 1,
+                    len(e.name or ""),
+                    e.id,
+                )
+            )
+
+        return [e.to_result() for e in collected[:limit]]
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during scrum epic list: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during scrum epic list: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _scrum_task_get(id: int) -> dict[str, Any]:
+    """Get Scrum-specific fields for a task (tasks.api.scrum.task.get)."""
+    client = get_client()
+    try:
+        scrum_task = await client.scrum_task_get(task_id=id)
+        result = scrum_task.to_result()
+        result["id"] = id
+        return result
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during scrum task get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during scrum task get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _scrum_task_update(
+    id: int,
+    epicId: int | None = None,
+    epicName: str | None = None,
+    storyPoints: str | None = None,
+    entityId: int | None = None,
+    sort: int | None = None,
+) -> dict[str, Any]:
+    """Update Scrum fields for an existing task (tasks.api.scrum.task.update).
+
+    Supports setting epic by epicId or resolving by epicName (within the task's groupId).
+    """
+    if epicId is not None and epicName is not None:
+        raise RuntimeError("Parameters 'epicId' and 'epicName' are mutually exclusive.")
+
+    client = get_client()
+
+    resolved_epic_id: int | None = epicId
+    resolved_epic_name: str | None = None
+
+    try:
+        if epicName is not None:
+            task = await client.task_get(task_id=id)
+            if not task.group_id:
+                raise RuntimeError(
+                    "Task is not linked to a groupId; cannot resolve epicName for a non-Scrum task."
+                )
+            group_id = int(task.group_id)
+            resolved_epic_id, resolved_epic_name = await _resolve_scrum_epic_by_name(
+                client=client,
+                group_id=group_id,
+                epic_name=epicName,
+            )
+
+        update_result = await client.scrum_task_update(
+            task_id=id,
+            entity_id=entityId,
+            story_points=storyPoints,
+            epic_id=resolved_epic_id,
+            sort=sort,
+        )
+
+        errors = update_result.get("errors")
+        updated = True
+        if isinstance(errors, list) and errors:
+            updated = False
+
+        result: dict[str, Any] = {"id": id, "updated": updated}
+        if resolved_epic_id is not None:
+            result["epicId"] = resolved_epic_id
+        if resolved_epic_name is not None:
+            result["epicName"] = resolved_epic_name
+        if storyPoints is not None:
+            result["storyPoints"] = storyPoints
+        if entityId is not None:
+            result["entityId"] = entityId
+        if sort is not None:
+            result["sort"] = sort
+        return result
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during scrum task update: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during scrum task update: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _scrum_task_create(
+    title: str,
+    responsibleId: int,
+    groupId: int,
+    description: str | None = None,
+    deadline: str | None = None,
+    priority: str | None = None,
+    epicId: int | None = None,
+    epicName: str | None = None,
+    storyPoints: str | None = None,
+    entityId: int | None = None,
+    sort: int | None = None,
+) -> dict[str, Any]:
+    """Create a task and attach it to Scrum (epic/story points/backlog/sprint).
+
+    Note:
+        This tool creates the underlying task via tasks.task.add, then configures Scrum fields
+        via tasks.api.scrum.task.update.
+    """
+    if epicId is not None and epicName is not None:
+        raise RuntimeError("Parameters 'epicId' and 'epicName' are mutually exclusive.")
+
+    client = get_client()
+
+    priority_code: int | None = None
+    if priority is not None:
+        try:
+            priority_code = _map_priority_to_code(priority)
+        except ValueError as e:
+            raise RuntimeError(str(e))
+
+    resolved_epic_id: int | None = epicId
+    resolved_epic_name: str | None = None
+
+    try:
+        if epicName is not None:
+            resolved_epic_id, resolved_epic_name = await _resolve_scrum_epic_by_name(
+                client=client,
+                group_id=groupId,
+                epic_name=epicName,
+            )
+
+        task_id = await client.task_add(
+            title=title,
+            responsible_id=responsibleId,
+            description=description,
+            group_id=groupId,
+            deadline=deadline,
+            priority=priority_code,
+        )
+
+        update_result = await client.scrum_task_update(
+            task_id=task_id,
+            entity_id=entityId,
+            story_points=storyPoints,
+            epic_id=resolved_epic_id,
+            sort=sort,
+        )
+
+        errors = update_result.get("errors")
+        scrum_updated = True
+        if isinstance(errors, list) and errors:
+            scrum_updated = False
+
+        result: dict[str, Any] = {
+            "id": task_id,
+            "title": title,
+            "groupId": groupId,
+            "created": True,
+            "scrumUpdated": scrum_updated,
+        }
+        if resolved_epic_id is not None:
+            result["epicId"] = resolved_epic_id
+        if resolved_epic_name is not None:
+            result["epicName"] = resolved_epic_name
+        if storyPoints is not None:
+            result["storyPoints"] = storyPoints
+        if entityId is not None:
+            result["entityId"] = entityId
+        if sort is not None:
+            result["sort"] = sort
+        return result
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during scrum task create: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during scrum task create: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _user_search(query: str) -> list[dict[str, Any]]:
     """Search for users by name.
 
@@ -724,6 +1060,83 @@ async def task_update(
         groupId=groupId,
         parentId=parentId,
         stageId=stageId,
+    )
+
+
+@mcp.tool
+async def scrum_epic_list(
+    groupId: int,
+    query: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List Scrum epics for a group.
+
+    Use this to find an epic by name and obtain its id (epicId) for other Scrum operations.
+    """
+    return await _scrum_epic_list(groupId=groupId, query=query, limit=limit)
+
+
+@mcp.tool
+async def scrum_task_get(id: int) -> dict[str, Any]:
+    """Get Scrum-specific fields for a task (epicId, storyPoints, entityId, etc.)."""
+    return await _scrum_task_get(id=id)
+
+
+@mcp.tool
+async def scrum_task_update(
+    id: int,
+    epicId: int | None = None,
+    epicName: str | None = None,
+    storyPoints: str | None = None,
+    entityId: int | None = None,
+    sort: int | None = None,
+) -> dict[str, Any]:
+    """Update Scrum fields for an existing task.
+
+    If epicName is provided, the tool resolves it within the task's groupId via scrum_epic_list,
+    then calls tasks.api.scrum.task.update.
+    """
+    return await _scrum_task_update(
+        id=id,
+        epicId=epicId,
+        epicName=epicName,
+        storyPoints=storyPoints,
+        entityId=entityId,
+        sort=sort,
+    )
+
+
+@mcp.tool
+async def scrum_task_create(
+    title: str,
+    responsibleId: int,
+    groupId: int,
+    description: str | None = None,
+    deadline: str | None = None,
+    priority: str | None = None,
+    epicId: int | None = None,
+    epicName: str | None = None,
+    storyPoints: str | None = None,
+    entityId: int | None = None,
+    sort: int | None = None,
+) -> dict[str, Any]:
+    """Create a task and attach Scrum fields (epic/story points/backlog/sprint).
+
+    This tool creates the base task via tasks.task.add, then configures Scrum via
+    tasks.api.scrum.task.update.
+    """
+    return await _scrum_task_create(
+        title=title,
+        responsibleId=responsibleId,
+        groupId=groupId,
+        description=description,
+        deadline=deadline,
+        priority=priority,
+        epicId=epicId,
+        epicName=epicName,
+        storyPoints=storyPoints,
+        entityId=entityId,
+        sort=sort,
     )
 
 

@@ -194,6 +194,57 @@ Supports:
 | `parentId` | int | No | Parent task ID (use 0 to clear) |
 | `stageId` | int | No | Kanban stage ID (use 0 to clear) |
 
+### scrum_epic_list
+
+List Scrum epics for a Scrum group (via `tasks.api.scrum.epic.list`). Use this to find `epicId` by epic name.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `groupId` | int | Yes | Scrum group/workgroup ID |
+| `query` | string | No | Filter by epic name (case-insensitive substring match) |
+| `limit` | int | No | Max results (default: 50) |
+
+### scrum_task_get
+
+Get Scrum-specific fields for a task (via `tasks.api.scrum.task.get`), including `epicId`, `storyPoints`, and `entityId`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Task ID |
+
+### scrum_task_update
+
+Update Scrum fields for an existing task (via `tasks.api.scrum.task.update`).
+Supports setting an epic by `epicId` or by `epicName` (resolved within the task's `groupId`).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Task ID |
+| `epicId` | int | No | Epic ID (mutually exclusive with `epicName`) |
+| `epicName` | string | No | Epic name (mutually exclusive with `epicId`) |
+| `storyPoints` | string | No | Story points (string) |
+| `entityId` | int | No | Backlog/sprint ID |
+| `sort` | int | No | Sorting |
+
+### scrum_task_create
+
+Create a task in a Scrum group and attach Scrum fields.
+Internally: creates the base task via `tasks.task.add`, then configures Scrum via `tasks.api.scrum.task.update`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `title` | string | Yes | Task title |
+| `responsibleId` | int | Yes | Assignee user ID |
+| `groupId` | int | Yes | Scrum group/workgroup ID |
+| `description` | string | No | Task description |
+| `deadline` | string | No | Deadline (ISO 8601) |
+| `priority` | string | No | low, medium, high |
+| `epicId` | int | No | Epic ID (mutually exclusive with `epicName`) |
+| `epicName` | string | No | Epic name (mutually exclusive with `epicId`) |
+| `storyPoints` | string | No | Story points (string) |
+| `entityId` | int | No | Backlog/sprint ID |
+| `sort` | int | No | Sorting |
+
 ### task_stages_get
 
 Get Scrum board columns (stages) for the **current sprint** of a group/project.

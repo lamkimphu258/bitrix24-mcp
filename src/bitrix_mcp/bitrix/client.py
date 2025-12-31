@@ -13,8 +13,10 @@ from .types import (
     BitrixAPIError,
     BitrixConnectionError,
     BitrixGroup,
+    BitrixScrumEpic,
     BitrixScrumKanbanStage,
     BitrixScrumSprint,
+    BitrixScrumTask,
     BitrixTask,
     BitrixTaskComment,
     BitrixTaskStage,
@@ -435,6 +437,111 @@ class Bitrix24Client:
             )
 
         return [BitrixScrumKanbanStage.model_validate(item) for item in result]
+
+    async def scrum_epic_list(
+        self,
+        *,
+        filter: dict[str, Any] | None = None,
+        order: dict[str, Any] | None = None,
+        select: list[str] | None = None,
+        start: int = 0,
+    ) -> list[BitrixScrumEpic]:
+        """Get a list of Scrum epics (tasks.api.scrum.epic.list).
+
+        Args:
+            filter: Optional epic filter (e.g., {"GROUP_ID": 143}).
+            order: Optional ordering map (e.g., {"ID": "asc"}).
+            select: Optional list of fields to select (e.g., ["ID", "NAME"]).
+            start: Pagination offset (0, 50, 100, ...).
+
+        Returns:
+            List of BitrixScrumEpic objects.
+
+        Raises:
+            BitrixAPIError: If the response format is unexpected.
+        """
+        params: dict[str, Any] = {
+            "filter": filter or {},
+            "order": order or {},
+            "select": select or [],
+            "start": start,
+        }
+        result = await self._request("tasks.api.scrum.epic.list", params)
+
+        if not isinstance(result, list):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.api.scrum.epic.list",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        return [BitrixScrumEpic.model_validate(item) for item in result]
+
+    async def scrum_task_get(self, task_id: int) -> BitrixScrumTask:
+        """Get Scrum-specific fields for a task (tasks.api.scrum.task.get).
+
+        Args:
+            task_id: Task identifier.
+
+        Returns:
+            BitrixScrumTask object.
+
+        Raises:
+            BitrixAPIError: If the response format is unexpected.
+        """
+        result = await self._request("tasks.api.scrum.task.get", {"id": task_id})
+
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.api.scrum.task.get",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        return BitrixScrumTask.model_validate(result)
+
+    async def scrum_task_update(
+        self,
+        task_id: int,
+        *,
+        entity_id: int | None = None,
+        story_points: str | None = None,
+        epic_id: int | None = None,
+        sort: int | None = None,
+    ) -> dict[str, Any]:
+        """Create/update Scrum metadata for a task (tasks.api.scrum.task.update).
+
+        Note:
+            This method does NOT create a new Bitrix24 task ID. You must create the underlying
+            task first (e.g., via tasks.task.add), then call this method to link to Scrum
+            (backlog/sprint) and set Scrum-specific fields like epicId and storyPoints.
+
+        Args:
+            task_id: Task identifier.
+            entity_id: Backlog/sprint identifier.
+            story_points: Story points string (can be non-numeric).
+            epic_id: Epic identifier.
+            sort: Sorting.
+
+        Returns:
+            Raw Bitrix24 result object.
+        """
+        fields: dict[str, Any] = {}
+        if entity_id is not None:
+            fields["entityId"] = entity_id
+        if story_points is not None:
+            fields["storyPoints"] = story_points
+        if epic_id is not None:
+            fields["epicId"] = epic_id
+        if sort is not None:
+            fields["sort"] = sort
+
+        params: dict[str, Any] = {"id": task_id, "fields": fields}
+        result = await self._request("tasks.api.scrum.task.update", params)
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.api.scrum.task.update",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+        return result
 
     async def task_stages_move_task(
         self,

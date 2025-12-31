@@ -8,6 +8,10 @@ from bitrix_mcp.bitrix.client import Bitrix24Client
 from bitrix_mcp.bitrix.types import BitrixConnectionError
 from bitrix_mcp.server import (
     _group_search,
+    _scrum_epic_list,
+    _scrum_task_create,
+    _scrum_task_get,
+    _scrum_task_update,
     _task_comment_add,
     _task_create,
     _task_get,
@@ -858,3 +862,250 @@ class TestTaskStagesMoveTask:
         """task_stages_move_task should reject when both before and after are provided."""
         with pytest.raises(RuntimeError):
             await _task_stages_move_task(id=1, stageId=2, before=3, after=4)
+
+
+class TestScrumEpicList:
+    """Tests for scrum_epic_list tool."""
+
+    @pytest.mark.asyncio
+    async def test_scrum_epic_list_basic(
+        self, setup_client, sample_scrum_epic_list_response, mock_bitrix_api
+    ):
+        """scrum_epic_list should return formatted epics."""
+        mock_bitrix_api.post("tasks.api.scrum.epic.list").mock(
+            return_value=Response(200, json=sample_scrum_epic_list_response)
+        )
+
+        results = await _scrum_epic_list(groupId=5)
+
+        assert len(results) == 2
+        assert results[0]["id"] == 1
+        assert results[0]["groupId"] == 5
+        assert results[0]["name"] == "Dashboard"
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["filter"]["GROUP_ID"] == 5
+        assert body["order"]["ID"] == "asc"
+        assert body["start"] == 0
+        assert "NAME" in body["select"]
+
+    @pytest.mark.asyncio
+    async def test_scrum_epic_list_query_filters(
+        self, setup_client, sample_scrum_epic_list_response, mock_bitrix_api
+    ):
+        """scrum_epic_list should filter by query (substring match)."""
+        mock_bitrix_api.post("tasks.api.scrum.epic.list").mock(
+            return_value=Response(200, json=sample_scrum_epic_list_response)
+        )
+
+        results = await _scrum_epic_list(groupId=5, query="dash")
+
+        assert len(results) == 1
+        assert results[0]["name"] == "Dashboard"
+
+
+class TestScrumTaskGet:
+    """Tests for scrum_task_get tool."""
+
+    @pytest.mark.asyncio
+    async def test_scrum_task_get_basic(
+        self, setup_client, sample_scrum_task_get_response, mock_bitrix_api
+    ):
+        """scrum_task_get should return Scrum fields for a task."""
+        mock_bitrix_api.post("tasks.api.scrum.task.get").mock(
+            return_value=Response(200, json=sample_scrum_task_get_response)
+        )
+
+        result = await _scrum_task_get(id=456)
+
+        assert result["id"] == 456
+        assert result["entityId"] == 2
+        assert result["storyPoints"] == "2"
+        assert result["epicId"] == 1
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 456
+
+
+class TestScrumTaskUpdate:
+    """Tests for scrum_task_update tool."""
+
+    @pytest.mark.asyncio
+    async def test_scrum_task_update_by_epic_id(
+        self, setup_client, sample_scrum_task_update_response, mock_bitrix_api
+    ):
+        """scrum_task_update should send correct payload when epicId is provided."""
+        mock_bitrix_api.post("tasks.api.scrum.task.update").mock(
+            return_value=Response(200, json=sample_scrum_task_update_response)
+        )
+
+        result = await _scrum_task_update(id=456, epicId=1, storyPoints="8", entityId=2, sort=10)
+
+        assert result["id"] == 456
+        assert result["updated"] is True
+        assert result["epicId"] == 1
+        assert result["storyPoints"] == "8"
+        assert result["entityId"] == 2
+        assert result["sort"] == 10
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 456
+        assert body["fields"]["entityId"] == 2
+        assert body["fields"]["storyPoints"] == "8"
+        assert body["fields"]["epicId"] == 1
+        assert body["fields"]["sort"] == 10
+
+    @pytest.mark.asyncio
+    async def test_scrum_task_update_by_epic_name_resolves(
+        self,
+        setup_client,
+        sample_task_get_response,
+        sample_scrum_epic_list_response,
+        sample_scrum_task_update_response,
+        mock_bitrix_api,
+    ):
+        """scrum_task_update should resolve epicName using task.groupId and epic list."""
+        mock_bitrix_api.post("tasks.task.get").mock(
+            return_value=Response(200, json=sample_task_get_response)
+        )
+        mock_bitrix_api.post("tasks.api.scrum.epic.list").mock(
+            return_value=Response(200, json=sample_scrum_epic_list_response)
+        )
+        mock_bitrix_api.post("tasks.api.scrum.task.update").mock(
+            return_value=Response(200, json=sample_scrum_task_update_response)
+        )
+
+        result = await _scrum_task_update(id=456, epicName="Dashboard", storyPoints="3")
+
+        assert result["updated"] is True
+        assert result["epicId"] == 1
+        assert result["epicName"] == "Dashboard"
+        assert result["storyPoints"] == "3"
+
+        assert mock_bitrix_api.calls[0].request.url.path.endswith("tasks.task.get")
+        assert mock_bitrix_api.calls[1].request.url.path.endswith("tasks.api.scrum.epic.list")
+        assert mock_bitrix_api.calls[2].request.url.path.endswith("tasks.api.scrum.task.update")
+
+        import json
+
+        update_body = json.loads(mock_bitrix_api.calls[2].request.content)
+        assert update_body["id"] == 456
+        assert update_body["fields"]["epicId"] == 1
+        assert update_body["fields"]["storyPoints"] == "3"
+
+    @pytest.mark.asyncio
+    async def test_scrum_task_update_ambiguous_epic_name_raises(
+        self, setup_client, sample_task_get_response, mock_bitrix_api
+    ):
+        """scrum_task_update should raise on ambiguous epicName and not call update."""
+        mock_bitrix_api.post("tasks.task.get").mock(
+            return_value=Response(200, json=sample_task_get_response)
+        )
+        mock_bitrix_api.post("tasks.api.scrum.epic.list").mock(
+            return_value=Response(
+                200,
+                json={
+                    "result": [
+                        {"id": 1, "groupId": 5, "name": "Dashboard"},
+                        {"id": 2, "groupId": 5, "name": "Dashboard v2"},
+                    ]
+                },
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Ambiguous epicName"):
+            await _scrum_task_update(id=456, epicName="Dash")
+
+
+class TestScrumTaskCreate:
+    """Tests for scrum_task_create tool."""
+
+    @pytest.mark.asyncio
+    async def test_scrum_task_create_with_epic_name(
+        self,
+        setup_client,
+        sample_scrum_epic_list_response,
+        sample_task_add_response,
+        sample_scrum_task_update_response,
+        mock_bitrix_api,
+    ):
+        """scrum_task_create should resolve epicName, create task, then update scrum fields."""
+        mock_bitrix_api.post("tasks.api.scrum.epic.list").mock(
+            return_value=Response(200, json=sample_scrum_epic_list_response)
+        )
+        mock_bitrix_api.post("tasks.task.add").mock(
+            return_value=Response(200, json=sample_task_add_response)
+        )
+        mock_bitrix_api.post("tasks.api.scrum.task.update").mock(
+            return_value=Response(200, json=sample_scrum_task_update_response)
+        )
+
+        result = await _scrum_task_create(
+            title="New scrum task",
+            responsibleId=7,
+            groupId=5,
+            epicName="CMS",
+            storyPoints="5",
+            priority="high",
+        )
+
+        assert result["id"] == 457
+        assert result["created"] is True
+        assert result["scrumUpdated"] is True
+        assert result["epicId"] == 2
+        assert result["epicName"] == "CMS"
+        assert result["storyPoints"] == "5"
+        assert result["groupId"] == 5
+
+        assert mock_bitrix_api.calls[0].request.url.path.endswith("tasks.api.scrum.epic.list")
+        assert mock_bitrix_api.calls[1].request.url.path.endswith("tasks.task.add")
+        assert mock_bitrix_api.calls[2].request.url.path.endswith("tasks.api.scrum.task.update")
+
+        import json
+
+        add_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        assert add_body["fields"]["TITLE"] == "New scrum task"
+        assert add_body["fields"]["RESPONSIBLE_ID"] == 7
+        assert add_body["fields"]["GROUP_ID"] == 5
+        assert add_body["fields"]["PRIORITY"] == 2
+
+        update_body = json.loads(mock_bitrix_api.calls[2].request.content)
+        assert update_body["id"] == 457
+        assert update_body["fields"]["epicId"] == 2
+        assert update_body["fields"]["storyPoints"] == "5"
+
+    @pytest.mark.asyncio
+    async def test_scrum_task_create_without_scrum_fields_still_updates(
+        self,
+        setup_client,
+        sample_task_add_response,
+        sample_scrum_task_update_response,
+        mock_bitrix_api,
+    ):
+        """scrum_task_create should still call scrum update (with empty fields) to link to Scrum."""
+        mock_bitrix_api.post("tasks.task.add").mock(
+            return_value=Response(200, json=sample_task_add_response)
+        )
+        mock_bitrix_api.post("tasks.api.scrum.task.update").mock(
+            return_value=Response(200, json=sample_scrum_task_update_response)
+        )
+
+        result = await _scrum_task_create(title="No scrum fields", responsibleId=7, groupId=5)
+
+        assert result["id"] == 457
+        assert result["scrumUpdated"] is True
+
+        import json
+
+        update_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        assert update_body["id"] == 457
+        assert update_body["fields"] == {}

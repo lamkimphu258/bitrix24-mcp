@@ -516,3 +516,98 @@ class TestGroupSearch:
         body = json.loads(request.content)
         assert body["FILTER"]["%NAME"] == "MusicFlowx"
         assert body["ORDER"]["NAME"] == "ASC"
+
+
+class TestScrumEpicList:
+    """Tests for scrum_epic_list method."""
+
+    @pytest.mark.asyncio
+    async def test_scrum_epic_list_success(
+        self, mock_webhook_url, sample_scrum_epic_list_response, mock_bitrix_api
+    ):
+        """scrum_epic_list should return list of epics."""
+        mock_bitrix_api.post("tasks.api.scrum.epic.list").mock(
+            return_value=Response(200, json=sample_scrum_epic_list_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            epics = await client.scrum_epic_list(
+                filter={"GROUP_ID": 5},
+                order={"ID": "asc"},
+                start=0,
+            )
+
+        assert len(epics) == 2
+        assert epics[0].id == 1
+        assert epics[0].group_id == 5
+        assert epics[0].name == "Dashboard"
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["filter"]["GROUP_ID"] == 5
+        assert body["order"]["ID"] == "asc"
+        assert body["start"] == 0
+
+
+class TestScrumTaskGet:
+    """Tests for scrum_task_get method."""
+
+    @pytest.mark.asyncio
+    async def test_scrum_task_get_success(
+        self, mock_webhook_url, sample_scrum_task_get_response, mock_bitrix_api
+    ):
+        """scrum_task_get should return scrum task fields."""
+        mock_bitrix_api.post("tasks.api.scrum.task.get").mock(
+            return_value=Response(200, json=sample_scrum_task_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            scrum_task = await client.scrum_task_get(task_id=456)
+
+        assert scrum_task.entity_id == 2
+        assert scrum_task.story_points == "2"
+        assert scrum_task.epic_id == 1
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 456
+
+
+class TestScrumTaskUpdate:
+    """Tests for scrum_task_update method."""
+
+    @pytest.mark.asyncio
+    async def test_scrum_task_update_success(
+        self, mock_webhook_url, sample_scrum_task_update_response, mock_bitrix_api
+    ):
+        """scrum_task_update should send correct payload and return raw result."""
+        mock_bitrix_api.post("tasks.api.scrum.task.update").mock(
+            return_value=Response(200, json=sample_scrum_task_update_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.scrum_task_update(
+                task_id=456,
+                entity_id=2,
+                story_points="8",
+                epic_id=1,
+                sort=10,
+            )
+
+        assert result["status"] == "success"
+        assert result["data"] is True
+        assert result["errors"] == []
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 456
+        assert body["fields"]["entityId"] == 2
+        assert body["fields"]["storyPoints"] == "8"
+        assert body["fields"]["epicId"] == 1
+        assert body["fields"]["sort"] == 10
