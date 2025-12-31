@@ -164,7 +164,7 @@ Create a new task or subtask. Use `parentId` to create a subtask under an existi
 | `groupId` | int | No | Workgroup/Scrum ID |
 | `parentId` | int | No | Parent task ID (creates subtask) |
 | `deadline` | string | No | Deadline (ISO 8601) |
-| `priority` | int | No | 0=Low, 1=Medium, 2=High |
+| `priority` | string | No | low, medium, high |
 
 ### task_update
 
@@ -182,7 +182,7 @@ Supports:
 | `id` | int | Yes | Task ID |
 | `title` | string | No | Task title |
 | `description` | string | No | Task description |
-| `priority` | int | No | 0=Low, 1=Medium, 2=High |
+| `priority` | string | No | low, medium, high |
 | `status` | string | No | pending, in_progress, completed, deferred (also accepts: "in progress", "done") |
 | `responsibleId` | int | No | Assignee user ID |
 | `accomplices` | list[int] | No | Participant user IDs |

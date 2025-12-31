@@ -357,7 +357,7 @@ class TestTaskCreate:
             description=sample_task_data["description"],
             groupId=sample_task_data["groupId"],
             parentId=sample_task_data["parentId"],
-            priority=sample_task_data["priority"],
+            priority="medium",
         )
 
         assert result["id"] == 457
@@ -371,9 +371,11 @@ class TestTaskCreate:
         fields = body["fields"]
 
         assert fields["TITLE"] == sample_task_data["title"]
+        assert fields["RESPONSIBLE_ID"] == sample_task_data["responsibleId"]
         assert fields["DESCRIPTION"] == sample_task_data["description"]
         assert fields["GROUP_ID"] == sample_task_data["groupId"]
         assert fields["PARENT_ID"] == sample_task_data["parentId"]
+        assert fields["PRIORITY"] == 1
 
     @pytest.mark.asyncio
     async def test_task_create_subtask(
@@ -446,7 +448,7 @@ class TestTaskUpdate:
             id=456,
             title="Updated title",
             description="Updated description",
-            priority=2,
+            priority="high",
             status="in progress",
             responsibleId=7,
             accomplices=[8, 9],
@@ -507,6 +509,18 @@ class TestTaskUpdate:
         """task_update should reject unknown status strings."""
         with pytest.raises(RuntimeError, match="Unknown task status"):
             await _task_update(id=456, status="banana")
+
+    @pytest.mark.asyncio
+    async def test_task_update_invalid_priority_raises(self, setup_client):
+        """task_update should reject unknown priority strings."""
+        with pytest.raises(RuntimeError, match="Unknown task priority"):
+            await _task_update(id=456, priority="banana")
+
+    @pytest.mark.asyncio
+    async def test_task_update_priority_int_raises(self, setup_client):
+        """task_update should not accept numeric priority input (string-only API)."""
+        with pytest.raises(RuntimeError, match="Unknown task priority"):
+            await _task_update(id=456, priority=2)  # type: ignore[arg-type]
 
     @pytest.mark.asyncio
     async def test_task_update_api_error(self, setup_client, api_error_response, mock_bitrix_api):

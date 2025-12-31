@@ -158,7 +158,7 @@ async def _task_create(
     groupId: int | None = None,
     parentId: int | None = None,
     deadline: str | None = None,
-    priority: int | None = None,
+    priority: str | None = None,
 ) -> dict[str, Any]:
     """Create a new task or subtask.
 
@@ -169,12 +169,19 @@ async def _task_create(
         groupId: Workgroup/Scrum ID (copy from parent task)
         parentId: Parent task ID - creates this as a SUBTASK
         deadline: Deadline in ISO 8601 format (optional)
-        priority: Priority: 0=Low, 1=Medium, 2=High (optional)
+        priority: Priority: low, medium, high (optional)
 
     Returns:
         Created task info with id and title
     """
     client = get_client()
+
+    priority_code: int | None = None
+    if priority is not None:
+        try:
+            priority_code = _map_priority_to_code(priority)
+        except ValueError as e:
+            raise RuntimeError(str(e))
 
     try:
         task_id = await client.task_add(
@@ -184,7 +191,7 @@ async def _task_create(
             group_id=groupId,
             parent_id=parentId,
             deadline=deadline,
-            priority=priority,
+            priority=priority_code,
         )
         return {"id": task_id, "title": title}
     except BitrixConnectionError as e:
@@ -259,11 +266,58 @@ def _map_status_to_code(status: str) -> int:
     raise ValueError(f"Unknown task status: {status}")
 
 
+def _normalize_priority(priority: str) -> str:
+    """Normalize a user-provided task priority string.
+
+    Args:
+        priority: Raw priority string (e.g., "High", "medium", "LOW")
+
+    Returns:
+        Normalized priority key (e.g., "high")
+    """
+    return priority.strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _map_priority_to_code(priority: str | int) -> int:
+    """Map a user-friendly priority (string or int) to Bitrix24 priority code.
+
+    Args:
+        priority: Priority as low/medium/high
+
+    Returns:
+        Bitrix24 priority code (0=low, 1=medium, 2=high)
+
+    Raises:
+        ValueError: If priority is not recognized
+    """
+    if not isinstance(priority, str):
+        raise ValueError(f"Unknown task priority: {priority}. Use one of: low, medium, high.")
+
+    normalized = _normalize_priority(priority)
+
+    # Common synonyms / user phrasing.
+    synonyms: dict[str, int] = {
+        "low": 0,
+        "medium": 1,
+        "med": 1,
+        "normal": 1,
+        "default": 1,
+        "high": 2,
+        "urgent": 2,
+        "critical": 2,
+    }
+
+    if normalized in synonyms:
+        return synonyms[normalized]
+
+    raise ValueError(f"Unknown task priority: {priority}. Use one of: low, medium, high.")
+
+
 async def _task_update(
     id: int,
     title: str | None = None,
     description: str | None = None,
-    priority: int | None = None,
+    priority: str | None = None,
     status: str | None = None,
     responsibleId: int | None = None,
     accomplices: list[int] | None = None,
@@ -281,7 +335,7 @@ async def _task_update(
         id: Task ID
         title: New task title
         description: New task description
-        priority: Priority: 0=Low, 1=Medium, 2=High
+        priority: Priority: low, medium, high
         status: Status string: pending, in_progress, completed, deferred
             (also supports common synonyms like "done")
         responsibleId: Assignee user ID
@@ -325,12 +379,19 @@ async def _task_update(
         except ValueError as e:
             raise RuntimeError(str(e))
 
+    priority_code: int | None = None
+    if priority is not None:
+        try:
+            priority_code = _map_priority_to_code(priority)
+        except ValueError as e:
+            raise RuntimeError(str(e))
+
     try:
         await client.task_update(
             task_id=id,
             title=title,
             description=description,
-            priority=priority,
+            priority=priority_code,
             status=status_code,
             responsible_id=responsibleId,
             accomplices=accomplices,
@@ -610,7 +671,7 @@ async def task_create(
     groupId: int | None = None,
     parentId: int | None = None,
     deadline: str | None = None,
-    priority: int | None = None,
+    priority: str | None = None,
 ) -> dict[str, Any]:
     """Create a new task or subtask. Use parentId to create a subtask under an existing task.
     Copy responsibleId and groupId from parent task."""
@@ -630,7 +691,7 @@ async def task_update(
     id: int,
     title: str | None = None,
     description: str | None = None,
-    priority: int | None = None,
+    priority: str | None = None,
     status: str | None = None,
     responsibleId: int | None = None,
     accomplices: list[int] | None = None,
