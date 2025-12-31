@@ -125,6 +125,74 @@ def sample_task_add_response() -> dict:
 
 
 @pytest.fixture
+def sample_scrum_sprint_list_response() -> dict:
+    """Return sample response for tasks.api.scrum.sprint.list API."""
+    return {
+        "result": [
+            {
+                "id": 5,
+                "groupId": 5,
+                "entityType": "sprint",
+                "name": "Sprint 5",
+                "goal": "",
+                "sort": 1,
+                "createdBy": 1,
+                "modifiedBy": 1,
+                "dateStart": "2025-12-01T00:00:00+00:00",
+                "dateEnd": "2025-12-31T23:59:59+00:00",
+                "status": "active",
+            },
+            {
+                "id": 4,
+                "groupId": 5,
+                "entityType": "sprint",
+                "name": "Sprint 4",
+                "goal": "",
+                "sort": 1,
+                "createdBy": 1,
+                "modifiedBy": 1,
+                "dateStart": "2025-11-01T00:00:00+00:00",
+                "dateEnd": "2025-11-30T23:59:59+00:00",
+                "status": "completed",
+            },
+        ]
+    }
+
+
+@pytest.fixture
+def sample_scrum_kanban_get_stages_response() -> dict:
+    """Return sample response for tasks.api.scrum.kanban.getStages API."""
+    return {
+        "result": [
+            {
+                "id": "58",
+                "name": "To Do",
+                "sort": "100",
+                "type": "NEW",
+                "sprintId": "5",
+                "color": "00C4FB",
+            },
+            {
+                "id": "59",
+                "name": "In Progress",
+                "sort": "200",
+                "type": "WORK",
+                "sprintId": "5",
+                "color": "47D1E2",
+            },
+            {
+                "id": "60",
+                "name": "Done",
+                "sort": "300",
+                "type": "FINISH",
+                "sprintId": "5",
+                "color": "75D900",
+            },
+        ]
+    }
+
+
+@pytest.fixture
 def sample_task_data() -> dict:
     """Return sample task data for creating tasks."""
     return {

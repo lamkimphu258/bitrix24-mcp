@@ -13,8 +13,11 @@ from .types import (
     BitrixAPIError,
     BitrixConnectionError,
     BitrixGroup,
+    BitrixScrumKanbanStage,
+    BitrixScrumSprint,
     BitrixTask,
     BitrixTaskComment,
+    BitrixTaskStage,
     BitrixUser,
 )
 
@@ -360,6 +363,122 @@ class Bitrix24Client:
 
         params: dict[str, Any] = {"taskId": task_id, "fields": fields}
         return await self._request("tasks.task.update", params)
+
+    async def task_kanban_stages_get(self, entity_id: int) -> list[BitrixTaskStage]:
+        """Get kanban/"My Planner" stages (columns) for a group or the current user.
+
+        Args:
+            entity_id: Group ID for Kanban stages, or 0 for current user's "My Planner".
+
+        Returns:
+            List of BitrixTaskStage objects.
+
+        Raises:
+            BitrixAPIError: If the response format is unexpected
+        """
+        result = await self._request("task.stages.get", {"entityId": entity_id})
+
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from task.stages.get",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        stages: list[BitrixTaskStage] = []
+        for stage in result.values():
+            if isinstance(stage, dict):
+                stages.append(BitrixTaskStage.model_validate(stage))
+
+        return stages
+
+    async def scrum_sprint_list(self, group_id: int) -> list[BitrixScrumSprint]:
+        """Get Scrum sprints for a group (tasks.api.scrum.sprint.list).
+
+        Args:
+            group_id: Scrum group (workgroup/project) ID.
+
+        Returns:
+            List of BitrixScrumSprint objects.
+
+        Raises:
+            BitrixAPIError: If the response format is unexpected.
+        """
+        params: dict[str, Any] = {"filter": {"GROUP_ID": group_id}, "order": {"DATE_START": "DESC"}}
+        result = await self._request("tasks.api.scrum.sprint.list", params)
+
+        if not isinstance(result, list):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.api.scrum.sprint.list",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        return [BitrixScrumSprint.model_validate(item) for item in result]
+
+    async def scrum_kanban_get_stages(self, sprint_id: int) -> list[BitrixScrumKanbanStage]:
+        """Get Scrum Kanban stages for a sprint (tasks.api.scrum.kanban.getStages).
+
+        Args:
+            sprint_id: Sprint ID (use tasks.api.scrum.sprint.list to obtain it).
+
+        Returns:
+            List of BitrixScrumKanbanStage objects.
+
+        Raises:
+            BitrixAPIError: If the response format is unexpected.
+        """
+        result = await self._request("tasks.api.scrum.kanban.getStages", {"sprintId": sprint_id})
+
+        if not isinstance(result, list):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.api.scrum.kanban.getStages",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        return [BitrixScrumKanbanStage.model_validate(item) for item in result]
+
+    async def task_stages_move_task(
+        self,
+        task_id: int,
+        stage_id: int,
+        *,
+        before: int | None = None,
+        after: int | None = None,
+    ) -> bool:
+        """Move a task from one stage to another (kanban or "My Planner").
+
+        Args:
+            task_id: Task ID to move
+            stage_id: Stage ID to move the task to
+            before: Optional task ID before which the task should be placed in the stage
+            after: Optional task ID after which the task should be placed in the stage
+
+        Returns:
+            True if the move succeeded
+
+        Raises:
+            ValueError: If both `before` and `after` are provided
+            BitrixAPIError: If the response format is unexpected
+        """
+        if before is not None and after is not None:
+            raise ValueError("Parameters 'before' and 'after' are mutually exclusive.")
+
+        params: dict[str, Any] = {"id": task_id, "stageId": stage_id}
+        if before is not None:
+            params["before"] = before
+        if after is not None:
+            params["after"] = after
+
+        result = await self._request("task.stages.movetask", params)
+
+        if isinstance(result, bool):
+            return result
+        if isinstance(result, (int, str)):
+            return str(result).strip().lower() in {"1", "true", "yes"}
+
+        raise BitrixAPIError(
+            "Unexpected response format from task.stages.movetask",
+            error_code="UNEXPECTED_RESPONSE",
+        )
 
     async def task_commentitem_getlist(
         self,

@@ -194,6 +194,31 @@ Supports:
 | `parentId` | int | No | Parent task ID (use 0 to clear) |
 | `stageId` | int | No | Kanban stage ID (use 0 to clear) |
 
+### task_stages_get
+
+Get Scrum board columns (stages) for the **current sprint** of a group/project.
+
+For Scrum groups (`entityId > 0`), this tool fetches the current sprint via `tasks.api.scrum.sprint.list`,
+then fetches stages via `tasks.api.scrum.kanban.getStages`.
+
+Returns stages with `id`, `title`, `sort`, `color`, `systemType`, and `sprintId`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `entityId` | int | Yes | Scrum group ID; use `0` for current user's "My Planner" stages (fallback) |
+
+### task_stages_move_task
+
+Move a task between kanban/Scrum columns (via `task.stages.movetask`).
+Optionally set the task position within the target column using `before` or `after`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Task ID |
+| `stageId` | int | Yes | Target stage ID |
+| `before` | int | No | Place task before this task ID (mutually exclusive with `after`) |
+| `after` | int | No | Place task after this task ID (mutually exclusive with `before`) |
+
 ### user_search
 
 Search for users by name. Use this to find a user's ID when you need to assign tasks.

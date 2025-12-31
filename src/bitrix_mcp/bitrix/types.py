@@ -135,6 +135,70 @@ class BitrixTask(BaseModel):
         return result
 
 
+class BitrixTaskStage(BaseModel):
+    """Represents a Bitrix24 Kanban/"My Planner" stage (task.stages.get)."""
+
+    id: str = Field(alias="ID")
+    title: str = Field(alias="TITLE")
+    sort: str | None = Field(default=None, alias="SORT")
+    color: str | None = Field(default=None, alias="COLOR")
+    system_type: str | None = Field(default=None, alias="SYSTEM_TYPE")
+    entity_id: str | None = Field(default=None, alias="ENTITY_ID")
+    entity_type: str | None = Field(default=None, alias="ENTITY_TYPE")
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+    def to_result(self) -> dict[str, Any]:
+        """Convert to result format for MCP tool response."""
+        return {
+            "id": int(self.id),
+            "title": self.title,
+            "sort": int(self.sort) if self.sort else None,
+            "color": self.color,
+            "systemType": self.system_type,
+            "entityId": int(self.entity_id) if self.entity_id else None,
+            "entityType": self.entity_type,
+        }
+
+
+class BitrixScrumSprint(BaseModel):
+    """Represents a Bitrix24 Scrum sprint (tasks.api.scrum.sprint.list)."""
+
+    id: int
+    group_id: int | None = Field(default=None, alias="groupId")
+    entity_type: str | None = Field(default=None, alias="entityType")
+    name: str | None = None
+    date_start: str | None = Field(default=None, alias="dateStart")
+    date_end: str | None = Field(default=None, alias="dateEnd")
+    status: str | None = None
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+
+class BitrixScrumKanbanStage(BaseModel):
+    """Represents a Bitrix24 Scrum Kanban stage (tasks.api.scrum.kanban.getStages)."""
+
+    id: str
+    name: str
+    sort: str | None = None
+    type: str | None = None
+    sprint_id: str | None = Field(default=None, alias="sprintId")
+    color: str | None = None
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+    def to_result(self) -> dict[str, Any]:
+        """Convert to result format for MCP tool response."""
+        return {
+            "id": int(self.id),
+            "title": self.name,
+            "sort": int(self.sort) if self.sort else None,
+            "color": self.color,
+            "systemType": self.type,
+            "sprintId": int(self.sprint_id) if self.sprint_id else None,
+        }
+
+
 class BitrixTaskCommentAttachment(BaseModel):
     """Represents a file attachment on a task comment."""
 

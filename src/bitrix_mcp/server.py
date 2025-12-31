@@ -6,6 +6,7 @@ plan and break down tasks into subtasks in Bitrix24 Scrum.
 
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 from fastmcp import FastMCP
@@ -350,6 +351,140 @@ async def _task_update(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _task_stages_get(entityId: int) -> list[dict[str, Any]]:
+    """Get Scrum kanban stages (columns) for the current sprint of a group.
+
+    Args:
+        entityId: Scrum group (workgroup/project) ID. If set to 0, returns "My Planner" stages
+            for the current user (non-scrum fallback).
+
+    Returns:
+        List of stages with id, title, sort, color, systemType, and sprintId.
+    """
+    client = get_client()
+
+    try:
+        # Backward-compatible fallback: entityId=0 lists personal "My Planner" stages.
+        if entityId == 0:
+            stages = await client.task_kanban_stages_get(entity_id=0)
+            results = [stage.to_result() for stage in stages]
+            return sorted(
+                results,
+                key=lambda s: (
+                    s.get("sort") is None,
+                    s.get("sort") or 0,
+                    s.get("id") or 0,
+                ),
+            )
+
+        # Scrum boards have stages per sprint.
+        sprints = await client.scrum_sprint_list(group_id=entityId)
+        if not sprints:
+            raise RuntimeError(f"No sprints found for groupId={entityId}")
+
+        def _norm(value: str | None) -> str:
+            return (value or "").strip().lower()
+
+        current_sprint = next((s for s in sprints if _norm(s.status) == "active"), None)
+
+        if current_sprint is None:
+            now = datetime.now(timezone.utc)
+
+            def _parse_iso(dt_str: str | None) -> datetime | None:
+                if not dt_str:
+                    return None
+                try:
+                    dt = datetime.fromisoformat(dt_str)
+                except ValueError:
+                    return None
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt.astimezone(timezone.utc)
+
+            in_range: list[tuple[datetime, Any]] = []
+            for sprint in sprints:
+                date_start = _parse_iso(sprint.date_start)
+                date_end = _parse_iso(sprint.date_end)
+                if (
+                    date_start
+                    and date_end
+                    and date_start <= now <= date_end
+                    and _norm(sprint.status) in {"planned", "active"}
+                ):
+                    in_range.append((date_start, sprint))
+
+            if in_range:
+                in_range.sort(key=lambda x: x[0], reverse=True)
+                current_sprint = in_range[0][1]
+
+        if current_sprint is None:
+            current_sprint = next(
+                (s for s in sprints if _norm(s.status) not in {"completed", "done"}),
+                sprints[0],
+            )
+
+        stages = await client.scrum_kanban_get_stages(sprint_id=current_sprint.id)
+        results = [stage.to_result() for stage in stages]
+        return sorted(
+            results,
+            key=lambda s: (
+                s.get("sort") is None,
+                s.get("sort") or 0,
+                s.get("id") or 0,
+            ),
+        )
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during task stages get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during task stages get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _task_stages_move_task(
+    id: int,
+    stageId: int,
+    before: int | None = None,
+    after: int | None = None,
+) -> dict[str, Any]:
+    """Move a task between kanban/"My Planner" stages (columns).
+
+    Args:
+        id: Task ID
+        stageId: Target stage ID
+        before: Optional task ID before which the task should be placed in the stage
+        after: Optional task ID after which the task should be placed in the stage
+
+    Returns:
+        Object containing id, stageId, and moved flag.
+    """
+    if before is not None and after is not None:
+        raise RuntimeError("Parameters 'before' and 'after' are mutually exclusive.")
+
+    client = get_client()
+
+    try:
+        moved = await client.task_stages_move_task(
+            task_id=id,
+            stage_id=stageId,
+            before=before,
+            after=after,
+        )
+
+        result: dict[str, Any] = {"id": id, "stageId": stageId, "moved": moved}
+        if before is not None:
+            result["before"] = before
+        if after is not None:
+            result["after"] = after
+        return result
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during task stage move: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during task stage move: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _user_search(query: str) -> list[dict[str, Any]]:
     """Search for users by name.
 
@@ -529,6 +664,31 @@ async def task_update(
         parentId=parentId,
         stageId=stageId,
     )
+
+
+@mcp.tool
+async def task_stages_get(entityId: int) -> list[dict[str, Any]]:
+    """Get Scrum kanban stages (columns) for the current sprint of a group.
+
+    For Scrum boards, this tool:
+    - Calls tasks.api.scrum.sprint.list for the group (entityId)
+    - Picks the "active" sprint if present (otherwise a best-effort fallback)
+    - Calls tasks.api.scrum.kanban.getStages with that sprintId
+
+    Use entityId=0 to get the current user's "My Planner" columns (non-scrum fallback).
+    """
+    return await _task_stages_get(entityId=entityId)
+
+
+@mcp.tool
+async def task_stages_move_task(
+    id: int, stageId: int, before: int | None = None, after: int | None = None
+) -> dict[str, Any]:
+    """Move a task between kanban/"My Planner" stages (columns).
+
+    Set `before` or `after` to control the task position within the target column.
+    """
+    return await _task_stages_move_task(id=id, stageId=stageId, before=before, after=after)
 
 
 @mcp.tool
