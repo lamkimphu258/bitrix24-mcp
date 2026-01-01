@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bitrix24-lkp-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for Bitrix24 task planning - enables AI assistants to help break down tasks into subtasks"
 readme = "README.md"
 license = "MIT"
