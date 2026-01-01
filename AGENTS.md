@@ -189,6 +189,7 @@ async def task_update(id: int, title: str | None = None) -> dict[str, Any]:
 | `LOG_LEVEL` | No | Logging level (default: `info`) |
 
 ## Bitrix24 API Reference
+https://apidocs.bitrix24.com/api-reference/index.html
 
 ### Task Status Codes
 | ID | Status |
