@@ -115,6 +115,7 @@ pytest --cov=src/bitrix_mcp
 ```
 
 ### Test Patterns
+- **Never touch real data / real Bitrix24** - Tests must be fully mocked and must never hit the real Bitrix24 API or depend on a real webhook token. Use `respx` + fixtures (e.g. `mock_webhook_url`, `mock_bitrix_api`) so tests are hermetic and safe to run anywhere.
 - **Use `respx`** for mocking HTTP requests to Bitrix24 API
 - **Use fixtures** from `conftest.py` for sample responses
 - **Test both success and error cases**
