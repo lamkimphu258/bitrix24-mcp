@@ -6,7 +6,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Bitrix24 MCP enables AI assistants to help developers plan and break down tasks into subtasks in Bitrix24 Scrum.
+Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), and manage Kanban/My Planner columns (get stages, move/reorder tasks).
 
 ---
 
