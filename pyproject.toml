@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bitrix24-lkp-mcp"
+version = "0.2.0"
+description = "MCP server for Bitrix24 task planning - enables AI assistants to help break down tasks into subtasks"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "LKP", email = "lamkimphu258@gmail.com" }
+]
+keywords = ["mcp", "bitrix24", "task-management", "ai-assistant", "scrum"]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "fastmcp>=2.0.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/lamkimphu258/bitrix24-lkp-mcp"
+Repository = "https://github.com/lamkimphu258/bitrix24-lkp-mcp"
+Issues = "https://github.com/lamkimphu258/bitrix24-lkp-mcp/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "respx>=0.21.0",
+    "ruff>=0.4.0",
+]
+
+[project.scripts]
+bitrix24-lkp-mcp = "bitrix_mcp.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bitrix_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
