@@ -965,6 +965,26 @@ class TestScrumTaskUpdate:
         assert body["fields"]["sort"] == 10
 
     @pytest.mark.asyncio
+    async def test_scrum_task_update_accepts_boolean_result(self, setup_client, mock_bitrix_api):
+        """scrum_task_update should work when Bitrix24 returns a bare boolean result."""
+        mock_bitrix_api.post("tasks.api.scrum.task.update").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        result = await _scrum_task_update(id=456, epicId=1)
+
+        assert result["id"] == 456
+        assert result["updated"] is True
+        assert result["epicId"] == 1
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 456
+        assert body["fields"]["epicId"] == 1
+
+    @pytest.mark.asyncio
     async def test_scrum_task_update_by_epic_name_resolves(
         self,
         setup_client,

@@ -320,6 +320,38 @@ AI: [Creates subtasks with parentId pointing to original task]
     Created 4 subtasks under task #456.
 ```
 
+## Local Development
+
+If you're contributing or running from source:
+
+```bash
+git clone https://github.com/lamkimphu258/bitrix24-lkp-mcp.git
+cd bitrix24-lkp-mcp
+
+uv venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+
+export BITRIX_WEBHOOK_URL="https://your-domain.bitrix24.com/rest/1/token/"
+python -m bitrix_mcp
+```
+
+To point Cursor at your local checkout, set `command` to your local venv python:
+
+```json
+{
+  "mcpServers": {
+    "bitrix24": {
+      "command": "/path/to/bitrix24-lkp-mcp/.venv/bin/python",
+      "args": ["-m", "bitrix_mcp"],
+      "env": {
+        "BITRIX_WEBHOOK_URL": "https://your-domain.bitrix24.com/rest/1/token/"
+      }
+    }
+  }
+}
+```
+
 ## Contribute
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.

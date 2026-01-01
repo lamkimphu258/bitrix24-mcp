@@ -536,12 +536,21 @@ class Bitrix24Client:
 
         params: dict[str, Any] = {"id": task_id, "fields": fields}
         result = await self._request("tasks.api.scrum.task.update", params)
-        if not isinstance(result, dict):
-            raise BitrixAPIError(
-                "Unexpected response format from tasks.api.scrum.task.update",
-                error_code="UNEXPECTED_RESPONSE",
-            )
-        return result
+        if isinstance(result, dict):
+            return result
+
+        # Bitrix24 sometimes returns a bare boolean for update methods. Normalize it into the
+        # dict format used elsewhere in this project (status/data/errors) so tools can reason
+        # about success consistently.
+        if isinstance(result, bool):
+            if result is True:
+                return {"status": "success", "data": True, "errors": []}
+            return {"status": "error", "data": False, "errors": ["update_failed"]}
+
+        raise BitrixAPIError(
+            "Unexpected response format from tasks.api.scrum.task.update",
+            error_code="UNEXPECTED_RESPONSE",
+        )
 
     async def task_stages_move_task(
         self,

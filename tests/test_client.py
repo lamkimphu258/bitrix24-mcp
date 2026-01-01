@@ -611,3 +611,24 @@ class TestScrumTaskUpdate:
         assert body["fields"]["storyPoints"] == "8"
         assert body["fields"]["epicId"] == 1
         assert body["fields"]["sort"] == 10
+
+    @pytest.mark.asyncio
+    async def test_scrum_task_update_accepts_boolean_result(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """scrum_task_update should normalize boolean results into a dict response."""
+        mock_bitrix_api.post("tasks.api.scrum.task.update").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.scrum_task_update(task_id=456, epic_id=1)
+
+        assert result == {"status": "success", "data": True, "errors": []}
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 456
+        assert body["fields"]["epicId"] == 1
