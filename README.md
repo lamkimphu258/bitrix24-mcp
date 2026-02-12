@@ -6,7 +6,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), and manage Kanban/My Planner columns (get stages, move/reorder tasks).
+Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), fetch CRM deal details by ID, create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), and manage Kanban/My Planner columns (get stages, move/reorder tasks).
 
 ---
 
@@ -142,6 +142,15 @@ Also includes `stageId` (Kanban stage ID, if the task is in a project with stage
 |-----------|------|----------|-------------|
 | `id` | int | Yes | Task ID |
 | `includeComments` | bool | No | Include task comments (legacy API via `task.commentitem.getlist`) |
+
+### crm_deal_get
+
+Get CRM deal details by ID (via `crm.deal.get`).
+Returns normalized core deal fields plus dynamic `userFields` (`UF_CRM_*`) and `parentIds` (`PARENT_ID_*`).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Deal ID |
 
 ### task_comment_add
 

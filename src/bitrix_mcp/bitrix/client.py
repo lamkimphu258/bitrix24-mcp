@@ -12,6 +12,7 @@ import httpx
 from .types import (
     BitrixAPIError,
     BitrixConnectionError,
+    BitrixDeal,
     BitrixGroup,
     BitrixScrumEpic,
     BitrixScrumKanbanStage,
@@ -238,6 +239,31 @@ class Bitrix24Client:
             raise BitrixAPIError(f"Task {task_id} not found", error_code="TASK_NOT_FOUND")
 
         return BitrixTask.model_validate(task_data)
+
+    async def crm_deal_get(self, deal_id: int) -> BitrixDeal:
+        """Get a single CRM deal by ID (crm.deal.get).
+
+        Args:
+            deal_id: Deal ID
+
+        Returns:
+            BitrixDeal object
+
+        Raises:
+            BitrixAPIError: If deal is not found or response format is unexpected
+        """
+        result = await self._request("crm.deal.get", {"id": deal_id})
+
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from crm.deal.get",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        if not result:
+            raise BitrixAPIError(f"Deal {deal_id} not found", error_code="DEAL_NOT_FOUND")
+
+        return BitrixDeal.model_validate(result)
 
     async def task_add(
         self,
