@@ -8,7 +8,15 @@ import pytest
 from httpx import Response
 
 from bitrix_mcp.bitrix.client import Bitrix24Client
-from bitrix_mcp.server import _task_create, _task_get, _task_search, set_client
+from bitrix_mcp.server import (
+    _crm_deal_fields,
+    _crm_deal_get,
+    _crm_deal_list,
+    _task_create,
+    _task_get,
+    _task_search,
+    set_client,
+)
 
 
 @pytest.fixture
@@ -259,6 +267,97 @@ class TestFullWorkflow:
         assert created_tasks[2]["id"] == 459
         assert created_tasks[3]["id"] == 460
 
+
+class TestCrmWorkflow:
+    """Test CRM workflow using crm_deal_list and crm_deal_get."""
+
+    @pytest.mark.asyncio
+    async def test_list_then_get_deal_details(self, setup_integration):
+        """User can list deals then fetch details of one deal."""
+        mock_api = setup_integration
+
+        mock_api.post("crm.deal.list").mock(
+            return_value=Response(
+                200,
+                json={
+                    "result": [
+                        {
+                            "ID": "410",
+                            "TITLE": "New Deal #1",
+                            "STAGE_ID": "PREPARATION",
+                        }
+                    ],
+                    "total": 1,
+                },
+            )
+        )
+
+        list_result = await _crm_deal_list(
+            filter={"STAGE_ID": "PREPARATION"},
+            select=["ID", "TITLE", "STAGE_ID"],
+            start=0,
+        )
+
+        assert list_result["total"] == 1
+        assert list_result["hasMore"] is False
+        assert len(list_result["items"]) == 1
+        deal_id = int(list_result["items"][0]["ID"])
+
+        mock_api.post("crm.deal.get").mock(
+            return_value=Response(
+                200,
+                json={
+                    "result": {
+                        "ID": "410",
+                        "TITLE": "New Deal #1",
+                        "CATEGORY_ID": "0",
+                        "STAGE_ID": "PREPARATION",
+                        "CURRENCY_ID": "EUR",
+                        "OPPORTUNITY": "1000000.00",
+                    }
+                },
+            )
+        )
+
+        deal = await _crm_deal_get(id=deal_id)
+        assert deal["id"] == 410
+        assert deal["title"] == "New Deal #1"
+
         # Verify workflow made expected number of API calls
-        # 1 search + 1 get + 4 creates = 6 total
-        assert mock_api.calls.call_count == 6
+        assert mock_api.calls.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_fields_then_find_deal_by_primary_contact(self, setup_integration):
+        """User can inspect fields then filter deals by primary contact id."""
+        mock_api = setup_integration
+
+        mock_api.post("crm.deal.fields").mock(
+            return_value=Response(
+                200,
+                json={
+                    "result": {
+                        "ID": {"type": "integer"},
+                        "CONTACT_ID": {"type": "crm_contact"},
+                    }
+                },
+            )
+        )
+
+        fields = await _crm_deal_fields()
+        assert "CONTACT_ID" in fields
+
+        mock_api.post("crm.deal.list").mock(
+            return_value=Response(
+                200,
+                json={
+                    "result": [
+                        {"ID": "410", "TITLE": "New Deal #1", "CONTACT_ID": "84"},
+                    ],
+                    "total": 1,
+                },
+            )
+        )
+
+        list_result = await _crm_deal_list(contactId=84, select=["ID", "TITLE", "CONTACT_ID"])
+        assert len(list_result["items"]) == 1
+        assert list_result["items"][0]["CONTACT_ID"] == "84"

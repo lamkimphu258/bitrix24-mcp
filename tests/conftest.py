@@ -124,6 +124,85 @@ def sample_crm_deal_get_response() -> dict:
 
 
 @pytest.fixture
+def sample_crm_deal_list_response() -> dict:
+    """Return sample response for crm.deal.list API."""
+    return {
+        "result": [
+            {
+                "ID": "410",
+                "TITLE": "New Deal #1",
+                "TYPE_ID": "COMPLEX",
+                "CATEGORY_ID": "0",
+                "STAGE_ID": "PREPARATION",
+                "OPPORTUNITY": "1000000.00",
+                "ASSIGNED_BY_ID": "1",
+                "CONTACT_ID": "84",
+                "DATE_CREATE": "2024-08-30T14:29:00+02:00",
+                "UF_CRM_1721244482250": "Hello world!",
+            },
+            {
+                "ID": "411",
+                "TITLE": "New Deal #2",
+                "TYPE_ID": "SALE",
+                "CATEGORY_ID": "1",
+                "STAGE_ID": "C1:NEW",
+                "OPPORTUNITY": "25000.00",
+                "ASSIGNED_BY_ID": "6",
+                "CONTACT_ID": "85",
+                "DATE_CREATE": "2024-09-01T10:00:00+02:00",
+            },
+        ],
+        "total": 120,
+        "next": 50,
+    }
+
+
+@pytest.fixture
+def sample_crm_deal_fields_response() -> dict:
+    """Return sample response for crm.deal.fields API."""
+    return {
+        "result": {
+            "ID": {
+                "type": "integer",
+                "isRequired": False,
+                "isReadOnly": True,
+                "isImmutable": False,
+                "isMultiple": False,
+                "isDynamic": False,
+                "title": "ID",
+            },
+            "TITLE": {
+                "type": "string",
+                "isRequired": True,
+                "isReadOnly": False,
+                "isImmutable": False,
+                "isMultiple": False,
+                "isDynamic": False,
+                "title": "Title",
+            },
+            "CONTACT_ID": {
+                "type": "crm_contact",
+                "isRequired": False,
+                "isReadOnly": False,
+                "isImmutable": False,
+                "isMultiple": False,
+                "isDynamic": False,
+                "title": "Contact",
+            },
+            "ASSIGNED_BY_ID": {
+                "type": "user",
+                "isRequired": False,
+                "isReadOnly": False,
+                "isImmutable": False,
+                "isMultiple": False,
+                "isDynamic": False,
+                "title": "Responsible",
+            },
+        }
+    }
+
+
+@pytest.fixture
 def sample_task_comment_list_response() -> dict:
     """Return sample response for task.commentitem.getlist API."""
     return {

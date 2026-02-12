@@ -6,7 +6,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), fetch CRM deal details by ID, create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), and manage Kanban/My Planner columns (get stages, move/reorder tasks).
+Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), list deal fields, list CRM deals, fetch CRM deal details by ID, create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), and manage Kanban/My Planner columns (get stages, move/reorder tasks).
 
 ---
 
@@ -151,6 +151,27 @@ Returns normalized core deal fields plus dynamic `userFields` (`UF_CRM_*`) and `
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | int | Yes | Deal ID |
+
+### crm_deal_fields
+
+Get available deal field definitions (via `crm.deal.fields`).
+Use this to discover selectable/filterable field names in your portal, including custom fields.
+
+### crm_deal_list
+
+Get CRM deals list (via `crm.deal.list`) with pagination metadata.
+Returns raw deal rows in `items` plus `total`, `next`, `hasMore`, and `start`.
+Note: Bitrix24 keeps this method operational but recommends `crm.item.list` for new development.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filter` | object | No | Bitrix24 filter object (e.g. `{\"STAGE_ID\":\"C1:NEW\"}`) |
+| `order` | object | No | Sort object (e.g. `{\"DATE_CREATE\":\"DESC\"}`) |
+| `select` | list[string] | No | Fields to return (default: `["*", "UF_*"]`) |
+| `start` | int | No | Pagination offset (0, 50, 100, ...) |
+| `contactId` | int | No | Shortcut for primary-contact filtering (`CONTACT_ID`) |
+
+`crm.deal.list` does not support `CONTACT_IDS` (multi-contact filtering). For that, use `crm.item.list` or `crm.deal.contact.items.*`.
 
 ### task_comment_add
 

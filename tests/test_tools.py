@@ -7,7 +7,9 @@ from bitrix_mcp import server
 from bitrix_mcp.bitrix.client import Bitrix24Client
 from bitrix_mcp.bitrix.types import BitrixConnectionError
 from bitrix_mcp.server import (
+    _crm_deal_fields,
     _crm_deal_get,
+    _crm_deal_list,
     _group_search,
     _scrum_epic_list,
     _scrum_task_create,
@@ -341,6 +343,155 @@ class TestCrmDealGet:
 
         with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
             await _crm_deal_get(id=410)
+
+
+class TestCrmDealFields:
+    """Tests for crm_deal_fields tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_fields_basic(
+        self, setup_client, sample_crm_deal_fields_response, mock_bitrix_api
+    ):
+        """crm_deal_fields should return a field-definition map."""
+        mock_bitrix_api.post("crm.deal.fields").mock(
+            return_value=Response(200, json=sample_crm_deal_fields_response)
+        )
+
+        result = await _crm_deal_fields()
+
+        assert "ID" in result
+        assert "TITLE" in result
+        assert "CONTACT_ID" in result
+        assert result["CONTACT_ID"]["type"] == "crm_contact"
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_fields_api_error(self, setup_client, mock_bitrix_api):
+        """crm_deal_fields should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.deal.fields").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Not found"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_deal_fields()
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_fields_connection_error(self, setup_client, monkeypatch):
+        """crm_deal_fields should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_deal_fields", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_deal_fields()
+
+
+class TestCrmDealList:
+    """Tests for crm_deal_list tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_basic(
+        self, setup_client, sample_crm_deal_list_response, mock_bitrix_api
+    ):
+        """crm_deal_list should return deal rows with pagination metadata."""
+        mock_bitrix_api.post("crm.deal.list").mock(
+            return_value=Response(200, json=sample_crm_deal_list_response)
+        )
+
+        result = await _crm_deal_list(
+            filter={"CATEGORY_ID": 0},
+            order={"TITLE": "ASC"},
+            select=["ID", "TITLE", "STAGE_ID"],
+            start=0,
+        )
+
+        assert len(result["items"]) == 2
+        assert result["items"][0]["ID"] == "410"
+        assert result["items"][0]["TITLE"] == "New Deal #1"
+        assert result["total"] == 120
+        assert result["next"] == 50
+        assert result["hasMore"] is True
+        assert result["start"] == 0
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_contact_id_shortcut(
+        self, setup_client, sample_crm_deal_list_response, mock_bitrix_api
+    ):
+        """crm_deal_list should map contactId to CONTACT_ID filter."""
+        mock_bitrix_api.post("crm.deal.list").mock(
+            return_value=Response(200, json=sample_crm_deal_list_response)
+        )
+
+        await _crm_deal_list(contactId=84)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["filter"]["CONTACT_ID"] == 84
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_contact_ids_not_supported(self, setup_client):
+        """crm_deal_list should reject CONTACT_IDS because Bitrix does not support it."""
+        with pytest.raises(RuntimeError, match="CONTACT_IDS"):
+            await _crm_deal_list(filter={"CONTACT_IDS": [84, 85]})
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_conflicting_contact_filters(self, setup_client):
+        """crm_deal_list should reject conflicting CONTACT_ID and contactId values."""
+        with pytest.raises(RuntimeError, match="Conflicting contact filters"):
+            await _crm_deal_list(filter={"CONTACT_ID": 85}, contactId=84)
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_has_more_false_when_next_missing(
+        self, setup_client, mock_bitrix_api
+    ):
+        """crm_deal_list should set hasMore=False when next is absent."""
+        mock_bitrix_api.post("crm.deal.list").mock(
+            return_value=Response(
+                200,
+                json={"result": [{"ID": "410", "TITLE": "New Deal #1"}], "total": 1},
+            )
+        )
+
+        result = await _crm_deal_list(start=50)
+
+        assert len(result["items"]) == 1
+        assert result["total"] == 1
+        assert result["next"] is None
+        assert result["hasMore"] is False
+        assert result["start"] == 50
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_api_error(self, setup_client, mock_bitrix_api):
+        """crm_deal_list should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.deal.list").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Not found"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_deal_list()
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_connection_error(self, setup_client, monkeypatch):
+        """crm_deal_list should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_deal_list", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_deal_list()
 
 
 class TestTaskCommentAdd:
