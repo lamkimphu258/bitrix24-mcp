@@ -384,6 +384,97 @@ class TestCrmLeadList:
                 await client.crm_lead_list()
 
 
+class TestCrmLeadProductRowsGet:
+    """Tests for crm_lead_productrows_get method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_productrows_get_success(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_productrows_get should return product row list."""
+        response = {
+            "result": [
+                {
+                    "ID": "901",
+                    "PRODUCT_ID": "101",
+                    "PRODUCT_NAME": "Starter Plan",
+                    "PRICE": "99.00",
+                    "QUANTITY": "1",
+                },
+                {
+                    "ID": "902",
+                    "PRODUCT_ID": "102",
+                    "PRODUCT_NAME": "Onboarding Package",
+                    "PRICE": "250.00",
+                    "QUANTITY": "1",
+                },
+            ]
+        }
+        mock_bitrix_api.post("crm.lead.productrows.get").mock(
+            return_value=Response(200, json=response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            rows = await client.crm_lead_productrows_get(lead_id=610)
+
+        assert len(rows) == 2
+        assert rows[0]["PRODUCT_ID"] == "101"
+        assert rows[1]["PRODUCT_NAME"] == "Onboarding Package"
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_productrows_get_sends_id_param(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_productrows_get should send correct id payload."""
+        mock_bitrix_api.post("crm.lead.productrows.get").mock(
+            return_value=Response(200, json={"result": []})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_lead_productrows_get(lead_id=610)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 610
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_productrows_get_empty_rows(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_productrows_get should return an empty list when no rows exist."""
+        mock_bitrix_api.post("crm.lead.productrows.get").mock(
+            return_value=Response(200, json={"result": []})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            rows = await client.crm_lead_productrows_get(lead_id=610)
+
+        assert rows == []
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_productrows_get_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_productrows_get should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.lead.productrows.get").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Lead not found"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Lead not found"):
+                await client.crm_lead_productrows_get(lead_id=99999)
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_productrows_get_unexpected_result_raises(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """crm_lead_productrows_get should raise on unexpected result shape."""
+        mock_bitrix_api.post("crm.lead.productrows.get").mock(
+            return_value=Response(200, json={"result": {"ID": "901"}})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected response format"):
+                await client.crm_lead_productrows_get(lead_id=610)
+
+
 class TestCrmDealGet:
     """Tests for crm_deal_get method."""
 
