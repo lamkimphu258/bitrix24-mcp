@@ -248,6 +248,39 @@ async def _crm_lead_add(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _crm_lead_update(
+    id: int,
+    fields: dict[str, Any],
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Update a CRM lead (crm.lead.update).
+
+    Args:
+        id: Lead ID
+        fields: Lead fields payload
+        params: Optional Bitrix24 params payload
+
+    Returns:
+        Object containing id and updated flag.
+    """
+    if not fields:
+        raise RuntimeError("Lead fields must not be empty.")
+
+    client = get_client()
+
+    try:
+        updated = await client.crm_lead_update(lead_id=id, fields=fields, params=params)
+        return {"id": id, "updated": updated}
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM lead update: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM lead update: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _crm_deal_get(id: int) -> dict[str, Any]:
     """Get detailed CRM deal information by ID.
 
@@ -1355,6 +1388,16 @@ async def crm_lead_add(
 ) -> dict[str, Any]:
     """Create a CRM lead (crm.lead.add)."""
     return await _crm_lead_add(fields=fields, params=params)
+
+
+@mcp.tool
+async def crm_lead_update(
+    id: int,
+    fields: dict[str, Any],
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Update a CRM lead (crm.lead.update)."""
+    return await _crm_lead_update(id=id, fields=fields, params=params)
 
 
 @mcp.tool
