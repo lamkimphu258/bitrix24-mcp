@@ -416,6 +416,60 @@ def sample_task_add_response() -> dict:
 
 
 @pytest.fixture
+def sample_scrum_backlog_get_response() -> dict:
+    """Return sample response for tasks.api.scrum.backlog.get API."""
+    return {
+        "result": {
+            "id": 91,
+            "groupId": 205,
+            "createdBy": 1665,
+            "modifiedBy": 1665,
+        }
+    }
+
+
+@pytest.fixture
+def sample_task_list_backlog_page_1_response() -> dict:
+    """Return first page for backlog-filtered tasks.task.list."""
+    return {
+        "result": {
+            "tasks": [
+                {
+                    "id": "456",
+                    "title": "Auto Send welcome email",
+                    "responsibleId": "7",
+                    "groupId": "205",
+                    "status": "2",
+                    "parentId": None,
+                }
+            ]
+        },
+        "total": 2,
+        "next": 50,
+    }
+
+
+@pytest.fixture
+def sample_task_list_backlog_page_2_response() -> dict:
+    """Return second (final) page for backlog-filtered tasks.task.list."""
+    return {
+        "result": {
+            "tasks": [
+                {
+                    "id": "789",
+                    "title": "Welcome email template",
+                    "responsibleId": "7",
+                    "groupId": "205",
+                    "status": "3",
+                    "parentId": None,
+                }
+            ]
+        },
+        "total": 2,
+    }
+
+
+@pytest.fixture
 def sample_scrum_sprint_list_response() -> dict:
     """Return sample response for tasks.api.scrum.sprint.list API."""
     return {

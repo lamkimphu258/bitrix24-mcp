@@ -21,6 +21,7 @@ from bitrix_mcp.server import (
     _crm_lead_productrows_get,
     _crm_lead_update,
     _group_search,
+    _scrum_backlog_tasks,
     _scrum_epic_list,
     _scrum_task_create,
     _scrum_task_get,
@@ -1654,6 +1655,148 @@ class TestTaskStagesMoveTask:
         """task_stages_move_task should reject when both before and after are provided."""
         with pytest.raises(RuntimeError):
             await _task_stages_move_task(id=1, stageId=2, before=3, after=4)
+
+
+class TestScrumBacklogTasks:
+    """Tests for scrum_backlog_tasks tool."""
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_returns_metadata_and_tasks(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_1_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should return backlog metadata and aggregated tasks."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            side_effect=[
+                Response(200, json=sample_task_list_backlog_page_1_response),
+                Response(200, json=sample_task_list_backlog_page_2_response),
+            ]
+        )
+
+        result = await _scrum_backlog_tasks(groupId=205)
+
+        assert result["groupId"] == 205
+        assert result["backlogId"] == 91
+        assert result["count"] == 2
+        assert len(result["tasks"]) == 2
+        assert result["tasks"][0]["id"] == 456
+        assert result["tasks"][1]["id"] == 789
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_multi_page_aggregation(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_1_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should iterate pages until next cursor is absent."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            side_effect=[
+                Response(200, json=sample_task_list_backlog_page_1_response),
+                Response(200, json=sample_task_list_backlog_page_2_response),
+            ]
+        )
+
+        result = await _scrum_backlog_tasks(groupId=205)
+
+        assert result["count"] == 2
+        assert mock_bitrix_api.calls.call_count == 3
+        assert mock_bitrix_api.calls[1].request.url.path.endswith("tasks.task.list")
+        assert mock_bitrix_api.calls[2].request.url.path.endswith("tasks.task.list")
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_sends_group_and_backlog_filters(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_1_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should include GROUP_ID and BACKLOG_ID in task list filter."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            side_effect=[
+                Response(200, json=sample_task_list_backlog_page_1_response),
+                Response(200, json=sample_task_list_backlog_page_2_response),
+            ]
+        )
+
+        await _scrum_backlog_tasks(groupId=205)
+
+        import json
+
+        first_page_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        second_page_body = json.loads(mock_bitrix_api.calls[2].request.content)
+
+        assert first_page_body["filter"]["GROUP_ID"] == 205
+        assert first_page_body["filter"]["BACKLOG_ID"] == 91
+        assert first_page_body["start"] == 0
+        assert second_page_body["filter"]["GROUP_ID"] == 205
+        assert second_page_body["filter"]["BACKLOG_ID"] == 91
+        assert second_page_body["start"] == 50
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_empty_backlog_returns_empty_list(
+        self, setup_client, sample_scrum_backlog_get_response, mock_bitrix_api
+    ):
+        """scrum_backlog_tasks should return count=0 and tasks=[] for empty backlog."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json={"result": {"tasks": []}, "total": 0})
+        )
+
+        result = await _scrum_backlog_tasks(groupId=205)
+
+        assert result["groupId"] == 205
+        assert result["backlogId"] == 91
+        assert result["count"] == 0
+        assert result["tasks"] == []
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_connection_error_mapping(self, setup_client, monkeypatch):
+        """scrum_backlog_tasks should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "scrum_backlog_get", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _scrum_backlog_tasks(groupId=205)
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_api_error_mapping(self, setup_client, mock_bitrix_api):
+        """scrum_backlog_tasks should map API errors to RuntimeError."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(
+                200,
+                json={
+                    "error": "ERROR_CORE",
+                    "error_description": "Backlog not found",
+                },
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _scrum_backlog_tasks(groupId=205)
 
 
 class TestScrumEpicList:

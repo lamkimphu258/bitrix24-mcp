@@ -464,6 +464,26 @@ class BitrixScrumEpic(BaseModel):
         }
 
 
+class BitrixScrumBacklog(BaseModel):
+    """Represents a Bitrix24 Scrum backlog (tasks.api.scrum.backlog.get)."""
+
+    id: int
+    group_id: int | None = Field(default=None, alias="groupId")
+    created_by: int | None = Field(default=None, alias="createdBy")
+    modified_by: int | None = Field(default=None, alias="modifiedBy")
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+    def to_result(self) -> dict[str, Any]:
+        """Convert to result format for MCP tool response."""
+        return {
+            "id": self.id,
+            "groupId": self.group_id,
+            "createdBy": self.created_by,
+            "modifiedBy": self.modified_by,
+        }
+
+
 class BitrixScrumTask(BaseModel):
     """Represents Scrum-specific fields for a task (tasks.api.scrum.task.get)."""
 

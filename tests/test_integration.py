@@ -22,6 +22,7 @@ from bitrix_mcp.server import (
     _crm_lead_list,
     _crm_lead_productrows_get,
     _crm_lead_update,
+    _scrum_backlog_tasks,
     _task_create,
     _task_get,
     _task_search,
@@ -459,6 +460,42 @@ class TestCrmWorkflow:
         assert deleted == {"id": 512, "deleted": True}
 
         assert mock_api.calls.call_count == 4
+
+
+class TestScrumBacklogWorkflow:
+    """Test scrum backlog retrieval workflow."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_backlog_and_paginated_tasks(
+        self,
+        setup_integration,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_1_response,
+        sample_task_list_backlog_page_2_response,
+    ):
+        """Tool should resolve backlog id and aggregate all paginated backlog tasks."""
+        mock_api = setup_integration
+
+        mock_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_api.post("tasks.task.list").mock(
+            side_effect=[
+                Response(200, json=sample_task_list_backlog_page_1_response),
+                Response(200, json=sample_task_list_backlog_page_2_response),
+            ]
+        )
+
+        result = await _scrum_backlog_tasks(groupId=205)
+
+        assert result["groupId"] == 205
+        assert result["backlogId"] == 91
+        assert result["count"] == 2
+        assert len(result["tasks"]) == 2
+        assert result["tasks"][0]["id"] == 456
+        assert result["tasks"][0]["status"] == "pending"
+        assert result["tasks"][1]["id"] == 789
+        assert result["tasks"][1]["status"] == "in_progress"
 
 
 class TestCrmLeadWorkflow:

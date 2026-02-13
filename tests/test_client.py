@@ -1452,6 +1452,111 @@ class TestGroupSearch:
         assert body["ORDER"]["NAME"] == "ASC"
 
 
+class TestScrumBacklogGet:
+    """Tests for scrum_backlog_get method."""
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_get_success(
+        self, mock_webhook_url, sample_scrum_backlog_get_response, mock_bitrix_api
+    ):
+        """scrum_backlog_get should return parsed backlog data."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            backlog = await client.scrum_backlog_get(group_id=205)
+
+        assert backlog.id == 91
+        assert backlog.group_id == 205
+        assert backlog.created_by == 1665
+        assert backlog.modified_by == 1665
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_get_sends_group_id(
+        self, mock_webhook_url, sample_scrum_backlog_get_response, mock_bitrix_api
+    ):
+        """scrum_backlog_get should send id payload as group id."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.scrum_backlog_get(group_id=205)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 205
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_get_unexpected_result_raises(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """scrum_backlog_get should raise BitrixAPIError on unexpected result shape."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json={"result": []})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected response format"):
+                await client.scrum_backlog_get(group_id=205)
+
+
+class TestTaskListPage:
+    """Tests for paginated task_list_page method."""
+
+    @pytest.mark.asyncio
+    async def test_task_list_page_parses_tasks_and_next(
+        self, mock_webhook_url, sample_task_list_backlog_page_1_response, mock_bitrix_api
+    ):
+        """task_list_page should parse tasks plus next cursor."""
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_1_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            page = await client.task_list_page(
+                filter={"GROUP_ID": 205, "BACKLOG_ID": 91},
+                limit=50,
+                start=0,
+            )
+
+        assert len(page["tasks"]) == 1
+        assert page["tasks"][0].id == "456"
+        assert page["next"] == 50
+        assert page["total"] == 2
+
+    @pytest.mark.asyncio
+    async def test_task_list_page_handles_last_page(
+        self, mock_webhook_url, sample_task_list_backlog_page_2_response, mock_bitrix_api
+    ):
+        """task_list_page should set next=None on final page."""
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_2_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            page = await client.task_list_page(filter={"GROUP_ID": 205, "BACKLOG_ID": 91}, start=50)
+
+        assert len(page["tasks"]) == 1
+        assert page["tasks"][0].id == "789"
+        assert page["next"] is None
+        assert page["total"] == 2
+
+    @pytest.mark.asyncio
+    async def test_task_list_page_unexpected_shape_raises(self, mock_webhook_url, mock_bitrix_api):
+        """task_list_page should raise BitrixAPIError on unexpected result shape."""
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json={"result": {"tasks": {}}})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected response format"):
+                await client.task_list_page(filter={"GROUP_ID": 205, "BACKLOG_ID": 91})
+
+
 class TestScrumEpicList:
     """Tests for scrum_epic_list method."""
 

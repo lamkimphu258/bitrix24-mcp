@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import httpx
+from pydantic import ValidationError
 
 from .types import (
     BitrixAPIError,
@@ -15,6 +16,7 @@ from .types import (
     BitrixDeal,
     BitrixGroup,
     BitrixLead,
+    BitrixScrumBacklog,
     BitrixScrumEpic,
     BitrixScrumKanbanStage,
     BitrixScrumSprint,
@@ -234,6 +236,109 @@ class Bitrix24Client:
         tasks_data = result.get("tasks", [])
 
         return [BitrixTask.model_validate(task) for task in tasks_data]
+
+    async def task_list_page(
+        self,
+        *,
+        filter: dict[str, Any] | None = None,
+        select: list[str] | None = None,
+        limit: int = 50,
+        start: int = 0,
+    ) -> dict[str, Any]:
+        """Fetch one paginated page from tasks.task.list with next/total metadata.
+
+        Args:
+            filter: Filter conditions (e.g., {"GROUP_ID": 205, "BACKLOG_ID": 91})
+            select: Fields to return (uses default if not specified)
+            limit: Maximum number of results per page (default 50)
+            start: Pagination offset (0, 50, 100, ...)
+
+        Returns:
+            Dict with `tasks` (list[BitrixTask]), `total` (optional int), and `next` (optional int)
+
+        Raises:
+            BitrixAPIError: If response format is unexpected
+        """
+        params: dict[str, Any] = {
+            "filter": filter or {},
+            "select": select or self.TASK_LIST_SELECT,
+            "limit": limit,
+            "start": start,
+        }
+
+        data = await self._request_raw("tasks.task.list", params)
+        result = data.get("result")
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.task.list",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        tasks_data = result.get("tasks")
+        if not isinstance(tasks_data, list):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.task.list",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        try:
+            tasks = [BitrixTask.model_validate(task) for task in tasks_data]
+        except ValidationError as e:
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.task.list",
+                error_code="UNEXPECTED_RESPONSE",
+            ) from e
+
+        total_raw = data.get("total")
+        total: int | None = None
+        if total_raw is not None:
+            try:
+                total = int(total_raw)
+            except (TypeError, ValueError):
+                raise BitrixAPIError(
+                    "Unexpected response format from tasks.task.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+
+        next_raw = data.get("next")
+        next_start: int | None = None
+        if next_raw is not None:
+            try:
+                next_start = int(next_raw)
+            except (TypeError, ValueError):
+                raise BitrixAPIError(
+                    "Unexpected response format from tasks.task.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+
+        return {"tasks": tasks, "total": total, "next": next_start}
+
+    async def task_list_all_pages(
+        self,
+        *,
+        filter: dict[str, Any] | None = None,
+        select: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[BitrixTask]:
+        """Fetch all task pages from tasks.task.list using the top-level `next` cursor."""
+        all_tasks: list[BitrixTask] = []
+        start = 0
+
+        while True:
+            page = await self.task_list_page(
+                filter=filter,
+                select=select,
+                limit=limit,
+                start=start,
+            )
+            all_tasks.extend(page["tasks"])
+
+            next_start = page.get("next")
+            if next_start is None or next_start == start:
+                break
+            start = next_start
+
+        return all_tasks
 
     async def task_get(
         self,
@@ -927,6 +1032,34 @@ class Bitrix24Client:
             )
 
         return [BitrixScrumKanbanStage.model_validate(item) for item in result]
+
+    async def scrum_backlog_get(self, group_id: int) -> BitrixScrumBacklog:
+        """Get Scrum backlog metadata for a group (tasks.api.scrum.backlog.get).
+
+        Args:
+            group_id: Scrum group (workgroup/project) ID.
+
+        Returns:
+            BitrixScrumBacklog object.
+
+        Raises:
+            BitrixAPIError: If the response format is unexpected.
+        """
+        result = await self._request("tasks.api.scrum.backlog.get", {"id": group_id})
+
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.api.scrum.backlog.get",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        try:
+            return BitrixScrumBacklog.model_validate(result)
+        except ValidationError as e:
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.api.scrum.backlog.get",
+                error_code="UNEXPECTED_RESPONSE",
+            ) from e
 
     async def scrum_epic_list(
         self,

@@ -6,7 +6,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), list deal fields and deals, fetch deal details and product rows, add/update/delete deals, create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), and manage Kanban/My Planner columns (get stages, move/reorder tasks).
+Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), list deal fields and deals, fetch deal details and product rows, add/update/delete deals, create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), fetch all Scrum backlog tasks in one call, and manage Kanban/My Planner columns (get stages, move/reorder tasks).
 
 ---
 
@@ -271,6 +271,24 @@ List Scrum epics for a Scrum group (via `tasks.api.scrum.epic.list`). Use this t
 | `groupId` | int | Yes | Scrum group/workgroup ID |
 | `query` | string | No | Filter by epic name (case-insensitive substring match) |
 | `limit` | int | No | Max results (default: 50) |
+
+### scrum_backlog_tasks
+
+Get all tasks currently in the backlog for a Scrum group.
+
+Internally this tool:
+- resolves backlog metadata via `tasks.api.scrum.backlog.get` using `groupId`
+- fetches all backlog cards via paginated `tasks.task.list` using `GROUP_ID` + `BACKLOG_ID`
+
+Returns:
+- `groupId` - requested Scrum group/workgroup ID
+- `backlogId` - resolved backlog ID
+- `count` - total number of backlog tasks returned
+- `tasks` - normalized task cards (`id`, `title`, `responsibleId`, `groupId`, `parentId`, `status`, `url`)
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `groupId` | int | Yes | Scrum group/workgroup ID |
 
 ### scrum_task_get
 

@@ -930,6 +930,39 @@ async def _task_stages_move_task(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _scrum_backlog_tasks(groupId: int) -> dict[str, Any]:
+    """Return all tasks currently in a Scrum group's backlog.
+
+    Flow:
+    1) Resolve backlog metadata via tasks.api.scrum.backlog.get
+    2) List tasks using GROUP_ID + BACKLOG_ID filters with pagination
+    3) Normalize each task card to search-result format
+    """
+    client = get_client()
+    base_url = client.get_base_url()
+
+    try:
+        backlog = await client.scrum_backlog_get(group_id=groupId)
+        tasks = await client.task_list_all_pages(
+            filter={"GROUP_ID": groupId, "BACKLOG_ID": backlog.id},
+            limit=50,
+        )
+
+        cards = [task.to_search_result(base_url=base_url) for task in tasks]
+        return {
+            "groupId": groupId,
+            "backlogId": backlog.id,
+            "count": len(cards),
+            "tasks": cards,
+        }
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during scrum backlog tasks: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during scrum backlog tasks: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 def _normalize_text(value: str) -> str:
     """Normalize user-provided free-text for matching."""
     return value.strip().lower()
@@ -1570,6 +1603,16 @@ async def scrum_epic_list(
     Use this to find an epic by name and obtain its id (epicId) for other Scrum operations.
     """
     return await _scrum_epic_list(groupId=groupId, query=query, limit=limit)
+
+
+@mcp.tool
+async def scrum_backlog_tasks(groupId: int) -> dict[str, Any]:
+    """Return all tasks currently in the backlog for a Scrum group.
+
+    Internally resolves backlog metadata via tasks.api.scrum.backlog.get, then fetches all
+    backlog tasks via paginated tasks.task.list calls filtered by GROUP_ID and BACKLOG_ID.
+    """
+    return await _scrum_backlog_tasks(groupId=groupId)
 
 
 @mcp.tool
