@@ -438,6 +438,37 @@ class Bitrix24Client:
             error_code="UNEXPECTED_RESPONSE",
         )
 
+    async def crm_deal_update(self, deal_id: int, fields: dict[str, Any]) -> bool:
+        """Update a CRM deal (crm.deal.update).
+
+        Args:
+            deal_id: Deal ID
+            fields: Deal fields payload
+
+        Returns:
+            True when update is successful, else False.
+
+        Raises:
+            ValueError: If deal_id is invalid or fields payload is empty
+            BitrixAPIError: If response format is unexpected
+        """
+        if deal_id <= 0:
+            raise ValueError("Deal id must be greater than 0.")
+        if not fields:
+            raise ValueError("Deal fields must not be empty.")
+
+        result = await self._request("crm.deal.update", {"id": deal_id, "fields": fields})
+
+        if isinstance(result, bool):
+            return result
+        if isinstance(result, (int, str)):
+            return str(result).strip().lower() in {"1", "true", "yes"}
+
+        raise BitrixAPIError(
+            "Unexpected response format from crm.deal.update",
+            error_code="UNEXPECTED_RESPONSE",
+        )
+
     async def task_add(
         self,
         title: str,

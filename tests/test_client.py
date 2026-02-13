@@ -546,6 +546,80 @@ class TestCrmDealAdd:
                 await client.crm_deal_add(fields={"TITLE": "Blocked Deal"})
 
 
+class TestCrmDealUpdate:
+    """Tests for crm_deal_update method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_update_success(
+        self, mock_webhook_url, sample_crm_deal_update_response, mock_bitrix_api
+    ):
+        """crm_deal_update should return update status."""
+        mock_bitrix_api.post("crm.deal.update").mock(
+            return_value=Response(200, json=sample_crm_deal_update_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            updated = await client.crm_deal_update(
+                deal_id=410,
+                fields={"TITLE": "Updated Deal Title"},
+            )
+
+        assert updated is True
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_update_sends_payload(
+        self, mock_webhook_url, sample_crm_deal_update_response, mock_bitrix_api
+    ):
+        """crm_deal_update should send id and fields payload."""
+        mock_bitrix_api.post("crm.deal.update").mock(
+            return_value=Response(200, json=sample_crm_deal_update_response)
+        )
+
+        fields = {
+            "TITLE": "Updated Deal Title",
+            "STAGE_ID": "PREPAYMENT_INVOICE",
+            "OPPORTUNITY": "2000.00",
+        }
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_deal_update(deal_id=410, fields=fields)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 410
+        assert body["fields"] == fields
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_update_requires_valid_id(self, mock_webhook_url):
+        """crm_deal_update should reject non-positive deal IDs."""
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(ValueError, match="greater than 0"):
+                await client.crm_deal_update(deal_id=0, fields={"TITLE": "Invalid"})
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_update_requires_non_empty_fields(self, mock_webhook_url):
+        """crm_deal_update should reject empty fields."""
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(ValueError, match="must not be empty"):
+                await client.crm_deal_update(deal_id=410, fields={})
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_update_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_deal_update should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.deal.update").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Update denied"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Update denied"):
+                await client.crm_deal_update(deal_id=410, fields={"TITLE": "Blocked"})
+
+
 class TestTaskAdd:
     """Tests for task_add method."""
 

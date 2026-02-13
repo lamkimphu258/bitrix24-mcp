@@ -238,6 +238,12 @@ def sample_crm_deal_add_response() -> dict:
 
 
 @pytest.fixture
+def sample_crm_deal_update_response() -> dict:
+    """Return sample response for crm.deal.update API."""
+    return {"result": True}
+
+
+@pytest.fixture
 def sample_task_comment_list_response() -> dict:
     """Return sample response for task.commentitem.getlist API."""
     return {

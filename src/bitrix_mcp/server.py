@@ -278,6 +278,36 @@ async def _crm_deal_add(fields: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _crm_deal_update(id: int, fields: dict[str, Any]) -> dict[str, Any]:
+    """Update a CRM deal (crm.deal.update).
+
+    Args:
+        id: Deal ID
+        fields: Deal fields payload
+
+    Returns:
+        Object containing id and updated flag.
+    """
+    if id <= 0:
+        raise RuntimeError("Deal id must be greater than 0.")
+    if not fields:
+        raise RuntimeError("Deal fields must not be empty.")
+
+    client = get_client()
+
+    try:
+        updated = await client.crm_deal_update(deal_id=id, fields=fields)
+        return {"id": id, "updated": updated}
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM deal update: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM deal update: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _task_comment_add(id: int, message: str) -> dict[str, Any]:
     """Add a comment to a task.
 
@@ -1188,6 +1218,12 @@ async def crm_deal_productrows_get(id: int) -> dict[str, Any]:
 async def crm_deal_add(fields: dict[str, Any]) -> dict[str, Any]:
     """Create a CRM deal (crm.deal.add)."""
     return await _crm_deal_add(fields=fields)
+
+
+@mcp.tool
+async def crm_deal_update(id: int, fields: dict[str, Any]) -> dict[str, Any]:
+    """Update a CRM deal (crm.deal.update)."""
+    return await _crm_deal_update(id=id, fields=fields)
 
 
 @mcp.tool
