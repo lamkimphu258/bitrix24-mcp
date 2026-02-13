@@ -407,6 +407,37 @@ class Bitrix24Client:
 
         return product_rows
 
+    async def crm_deal_add(self, fields: dict[str, Any]) -> int:
+        """Create a CRM deal (crm.deal.add).
+
+        Args:
+            fields: Deal fields payload
+
+        Returns:
+            Created deal ID.
+
+        Raises:
+            ValueError: If fields payload is empty
+            BitrixAPIError: If response format is unexpected
+        """
+        if not fields:
+            raise ValueError("Deal fields must not be empty.")
+
+        result = await self._request("crm.deal.add", {"fields": fields})
+
+        if isinstance(result, (int, str)):
+            return int(result)
+
+        if isinstance(result, dict):
+            deal_id = result.get("ID") or result.get("id") or result.get("dealId")
+            if deal_id is not None:
+                return int(deal_id)
+
+        raise BitrixAPIError(
+            "Unexpected response format from crm.deal.add",
+            error_code="UNEXPECTED_RESPONSE",
+        )
+
     async def task_add(
         self,
         title: str,
