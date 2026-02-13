@@ -475,6 +475,66 @@ class TestCrmLeadProductRowsGet:
                 await client.crm_lead_productrows_get(lead_id=610)
 
 
+class TestCrmLeadAdd:
+    """Tests for crm_lead_add method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_success(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_add should return created lead ID."""
+        mock_bitrix_api.post("crm.lead.add").mock(return_value=Response(200, json={"result": 612}))
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            lead_id = await client.crm_lead_add(fields={"TITLE": "New Lead"})
+
+        assert lead_id == 612
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_sends_fields_and_params_payload(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """crm_lead_add should send fields and params payload."""
+        mock_bitrix_api.post("crm.lead.add").mock(return_value=Response(200, json={"result": 612}))
+
+        fields = {
+            "TITLE": "Lead from Website",
+            "STATUS_ID": "NEW",
+            "OPPORTUNITY": "1200.00",
+            "CURRENCY_ID": "USD",
+        }
+        params = {"REGISTER_SONET_EVENT": "Y"}
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_lead_add(fields=fields, params=params)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["fields"] == fields
+        assert body["params"] == params
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_requires_non_empty_fields(self, mock_webhook_url):
+        """crm_lead_add should reject empty fields."""
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(ValueError, match="must not be empty"):
+                await client.crm_lead_add(fields={})
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_add should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.lead.add").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Access denied"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Access denied"):
+                await client.crm_lead_add(fields={"TITLE": "Blocked Lead"})
+
+
 class TestCrmDealGet:
     """Tests for crm_deal_get method."""
 

@@ -14,6 +14,7 @@ from bitrix_mcp.server import (
     _crm_deal_list,
     _crm_deal_productrows_get,
     _crm_deal_update,
+    _crm_lead_add,
     _crm_lead_get,
     _crm_lead_list,
     _crm_lead_productrows_get,
@@ -513,6 +514,65 @@ class TestCrmLeadProductRowsGet:
 
         with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
             await _crm_lead_productrows_get(id=610)
+
+
+class TestCrmLeadAdd:
+    """Tests for crm_lead_add tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_basic(self, setup_client, mock_bitrix_api):
+        """crm_lead_add should return id and created flag."""
+        mock_bitrix_api.post("crm.lead.add").mock(return_value=Response(200, json={"result": 612}))
+
+        fields = {
+            "TITLE": "Lead from Website",
+            "STATUS_ID": "NEW",
+            "OPPORTUNITY": "1200.00",
+            "CURRENCY_ID": "USD",
+        }
+        params = {"REGISTER_SONET_EVENT": "Y"}
+        result = await _crm_lead_add(fields=fields, params=params)
+
+        assert result == {"id": 612, "created": True}
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["fields"] == fields
+        assert body["params"] == params
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_rejects_empty_fields(self, setup_client):
+        """crm_lead_add should reject empty fields."""
+        with pytest.raises(RuntimeError, match="must not be empty"):
+            await _crm_lead_add(fields={})
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_api_error(self, setup_client, mock_bitrix_api):
+        """crm_lead_add should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.lead.add").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Access denied"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_lead_add(fields={"TITLE": "Blocked Lead"})
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_connection_error(self, setup_client, monkeypatch):
+        """crm_lead_add should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_lead_add", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_lead_add(fields={"TITLE": "New Lead"})
 
 
 class TestCrmDealGet:

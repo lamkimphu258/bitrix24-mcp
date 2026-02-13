@@ -416,6 +416,47 @@ class Bitrix24Client:
 
         return product_rows
 
+    async def crm_lead_add(
+        self,
+        *,
+        fields: dict[str, Any],
+        params: dict[str, Any] | None = None,
+    ) -> int:
+        """Create a CRM lead (crm.lead.add).
+
+        Args:
+            fields: Lead fields payload
+            params: Optional Bitrix24 params payload
+
+        Returns:
+            Created lead ID.
+
+        Raises:
+            ValueError: If fields payload is empty
+            BitrixAPIError: If response format is unexpected
+        """
+        if not fields:
+            raise ValueError("Lead fields must not be empty.")
+
+        payload: dict[str, Any] = {"fields": fields}
+        if params is not None:
+            payload["params"] = params
+
+        result = await self._request("crm.lead.add", payload)
+
+        if isinstance(result, (int, str)):
+            return int(result)
+
+        if isinstance(result, dict):
+            lead_id = result.get("ID") or result.get("id") or result.get("leadId")
+            if lead_id is not None:
+                return int(lead_id)
+
+        raise BitrixAPIError(
+            "Unexpected response format from crm.lead.add",
+            error_code="UNEXPECTED_RESPONSE",
+        )
+
     async def crm_deal_fields(self) -> dict[str, Any]:
         """Get available CRM deal fields (crm.deal.fields).
 

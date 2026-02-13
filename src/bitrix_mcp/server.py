@@ -217,6 +217,37 @@ async def _crm_lead_productrows_get(id: int) -> dict[str, Any]:
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _crm_lead_add(
+    fields: dict[str, Any],
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a CRM lead (crm.lead.add).
+
+    Args:
+        fields: Lead fields payload
+        params: Optional Bitrix24 params payload
+
+    Returns:
+        Object containing id and created flag.
+    """
+    if not fields:
+        raise RuntimeError("Lead fields must not be empty.")
+
+    client = get_client()
+
+    try:
+        lead_id = await client.crm_lead_add(fields=fields, params=params)
+        return {"id": lead_id, "created": True}
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM lead add: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM lead add: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _crm_deal_get(id: int) -> dict[str, Any]:
     """Get detailed CRM deal information by ID.
 
@@ -1315,6 +1346,15 @@ async def crm_lead_list(
 async def crm_lead_productrows_get(id: int) -> dict[str, Any]:
     """Get products attached to a lead (crm.lead.productrows.get)."""
     return await _crm_lead_productrows_get(id=id)
+
+
+@mcp.tool
+async def crm_lead_add(
+    fields: dict[str, Any],
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a CRM lead (crm.lead.add)."""
+    return await _crm_lead_add(fields=fields, params=params)
 
 
 @mcp.tool
