@@ -135,6 +135,149 @@ class BitrixTask(BaseModel):
         return result
 
 
+class BitrixDeal(BaseModel):
+    """Represents a Bitrix24 CRM deal (crm.deal.get)."""
+
+    id: str = Field(alias="ID")
+    title: str = Field(alias="TITLE")
+    type_id: str | None = Field(default=None, alias="TYPE_ID")
+    category_id: str | None = Field(default=None, alias="CATEGORY_ID")
+    stage_id: str | None = Field(default=None, alias="STAGE_ID")
+    stage_semantic_id: str | None = Field(default=None, alias="STAGE_SEMANTIC_ID")
+    is_new: str | None = Field(default=None, alias="IS_NEW")
+    is_recurring: str | None = Field(default=None, alias="IS_RECURRING")
+    is_return_customer: str | None = Field(default=None, alias="IS_RETURN_CUSTOMER")
+    is_repeated_approach: str | None = Field(default=None, alias="IS_REPEATED_APPROACH")
+    probability: str | None = Field(default=None, alias="PROBABILITY")
+    currency_id: str | None = Field(default=None, alias="CURRENCY_ID")
+    opportunity: str | None = Field(default=None, alias="OPPORTUNITY")
+    is_manual_opportunity: str | None = Field(default=None, alias="IS_MANUAL_OPPORTUNITY")
+    tax_value: str | None = Field(default=None, alias="TAX_VALUE")
+    company_id: str | None = Field(default=None, alias="COMPANY_ID")
+    contact_id: str | None = Field(default=None, alias="CONTACT_ID")
+    quote_id: str | None = Field(default=None, alias="QUOTE_ID")
+    lead_id: str | None = Field(default=None, alias="LEAD_ID")
+    begin_date: str | None = Field(default=None, alias="BEGINDATE")
+    close_date: str | None = Field(default=None, alias="CLOSEDATE")
+    opened: str | None = Field(default=None, alias="OPENED")
+    closed: str | None = Field(default=None, alias="CLOSED")
+    comments: str | None = Field(default=None, alias="COMMENTS")
+    assigned_by_id: str | None = Field(default=None, alias="ASSIGNED_BY_ID")
+    created_by_id: str | None = Field(default=None, alias="CREATED_BY_ID")
+    modify_by_id: str | None = Field(default=None, alias="MODIFY_BY_ID")
+    moved_by_id: str | None = Field(default=None, alias="MOVED_BY_ID")
+    date_create: str | None = Field(default=None, alias="DATE_CREATE")
+    date_modify: str | None = Field(default=None, alias="DATE_MODIFY")
+    moved_time: str | None = Field(default=None, alias="MOVED_TIME")
+    source_id: str | None = Field(default=None, alias="SOURCE_ID")
+    source_description: str | None = Field(default=None, alias="SOURCE_DESCRIPTION")
+    additional_info: str | None = Field(default=None, alias="ADDITIONAL_INFO")
+    location_id: str | None = Field(default=None, alias="LOCATION_ID")
+    originator_id: str | None = Field(default=None, alias="ORIGINATOR_ID")
+    origin_id: str | None = Field(default=None, alias="ORIGIN_ID")
+    utm_source: str | None = Field(default=None, alias="UTM_SOURCE")
+    utm_medium: str | None = Field(default=None, alias="UTM_MEDIUM")
+    utm_campaign: str | None = Field(default=None, alias="UTM_CAMPAIGN")
+    utm_content: str | None = Field(default=None, alias="UTM_CONTENT")
+    utm_term: str | None = Field(default=None, alias="UTM_TERM")
+    last_activity_time: str | None = Field(default=None, alias="LAST_ACTIVITY_TIME")
+    last_activity_by: str | None = Field(default=None, alias="LAST_ACTIVITY_BY")
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+    @staticmethod
+    def _to_int(value: Any) -> int | None:  # noqa: ANN401
+        """Convert numeric-like values to int when possible."""
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _to_flag(value: Any) -> bool | None:  # noqa: ANN401
+        """Convert Bitrix24 Y/N flags to booleans."""
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip().upper()
+        if normalized == "Y":
+            return True
+        if normalized == "N":
+            return False
+        return None
+
+    def to_result(self) -> dict[str, Any]:
+        """Convert to result format for MCP tool response."""
+        extras = self.model_extra or {}
+
+        user_fields: dict[str, Any] = {}
+        parent_ids: dict[str, Any] = {}
+        extra_fields: dict[str, Any] = {}
+
+        for key, value in extras.items():
+            if key.startswith("UF_CRM_"):
+                user_fields[key] = value
+                continue
+            if key.startswith("PARENT_ID_"):
+                parent_id = self._to_int(value)
+                parent_ids[key] = parent_id if parent_id is not None else value
+                continue
+            extra_fields[key] = value
+
+        result = {
+            "id": int(self.id),
+            "title": self.title,
+            "typeId": self.type_id,
+            "categoryId": self._to_int(self.category_id),
+            "stageId": self.stage_id,
+            "stageSemanticId": self.stage_semantic_id,
+            "isNew": self._to_flag(self.is_new),
+            "isRecurring": self._to_flag(self.is_recurring),
+            "isReturnCustomer": self._to_flag(self.is_return_customer),
+            "isRepeatedApproach": self._to_flag(self.is_repeated_approach),
+            "probability": self._to_int(self.probability),
+            "currencyId": self.currency_id,
+            "opportunity": self.opportunity,
+            "isManualOpportunity": self._to_flag(self.is_manual_opportunity),
+            "taxValue": self.tax_value,
+            "companyId": self._to_int(self.company_id),
+            "contactId": self._to_int(self.contact_id),
+            "quoteId": self._to_int(self.quote_id),
+            "leadId": self._to_int(self.lead_id),
+            "beginDate": self.begin_date,
+            "closeDate": self.close_date,
+            "opened": self._to_flag(self.opened),
+            "closed": self._to_flag(self.closed),
+            "comments": self.comments,
+            "assignedById": self._to_int(self.assigned_by_id),
+            "createdById": self._to_int(self.created_by_id),
+            "modifyById": self._to_int(self.modify_by_id),
+            "movedById": self._to_int(self.moved_by_id),
+            "dateCreate": self.date_create,
+            "dateModify": self.date_modify,
+            "movedTime": self.moved_time,
+            "sourceId": self.source_id,
+            "sourceDescription": self.source_description,
+            "additionalInfo": self.additional_info,
+            "locationId": self._to_int(self.location_id),
+            "originatorId": self.originator_id,
+            "originId": self.origin_id,
+            "utmSource": self.utm_source,
+            "utmMedium": self.utm_medium,
+            "utmCampaign": self.utm_campaign,
+            "utmContent": self.utm_content,
+            "utmTerm": self.utm_term,
+            "lastActivityTime": self.last_activity_time,
+            "lastActivityBy": self._to_int(self.last_activity_by),
+            "userFields": user_fields,
+            "parentIds": parent_ids,
+        }
+        if extra_fields:
+            result["extraFields"] = extra_fields
+        return result
+
+
 class BitrixTaskStage(BaseModel):
     """Represents a Bitrix24 Kanban/"My Planner" stage (task.stages.get)."""
 

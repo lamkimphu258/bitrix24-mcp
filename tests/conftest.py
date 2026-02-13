@@ -69,6 +69,187 @@ def sample_task_get_response() -> dict:
 
 
 @pytest.fixture
+def sample_crm_deal_get_response() -> dict:
+    """Return sample response for crm.deal.get API."""
+    return {
+        "result": {
+            "ID": "410",
+            "TITLE": "New Deal #1",
+            "TYPE_ID": "COMPLEX",
+            "CATEGORY_ID": "0",
+            "STAGE_ID": "PREPARATION",
+            "STAGE_SEMANTIC_ID": "P",
+            "IS_NEW": "N",
+            "IS_RECURRING": "N",
+            "IS_RETURN_CUSTOMER": "N",
+            "IS_REPEATED_APPROACH": "N",
+            "PROBABILITY": "99",
+            "CURRENCY_ID": "EUR",
+            "OPPORTUNITY": "1000000.00",
+            "IS_MANUAL_OPPORTUNITY": "Y",
+            "TAX_VALUE": "0.00",
+            "COMPANY_ID": "9",
+            "CONTACT_ID": "84",
+            "QUOTE_ID": None,
+            "LEAD_ID": None,
+            "BEGINDATE": "2024-08-30T02:00:00+02:00",
+            "CLOSEDATE": "2024-09-09T02:00:00+02:00",
+            "OPENED": "Y",
+            "CLOSED": "N",
+            "COMMENTS": "[B]Example comment[/B]",
+            "ASSIGNED_BY_ID": "1",
+            "CREATED_BY_ID": "1",
+            "MODIFY_BY_ID": "1",
+            "MOVED_BY_ID": "1",
+            "DATE_CREATE": "2024-08-30T14:29:00+02:00",
+            "DATE_MODIFY": "2024-08-30T14:29:00+02:00",
+            "MOVED_TIME": "2024-08-30T14:29:00+02:00",
+            "SOURCE_ID": "CALLBACK",
+            "SOURCE_DESCRIPTION": "Additional information about the source",
+            "ADDITIONAL_INFO": "Additional information",
+            "LOCATION_ID": None,
+            "ORIGINATOR_ID": None,
+            "ORIGIN_ID": None,
+            "UTM_SOURCE": "google",
+            "UTM_MEDIUM": "CPC",
+            "UTM_CAMPAIGN": None,
+            "UTM_CONTENT": None,
+            "UTM_TERM": None,
+            "LAST_ACTIVITY_TIME": "2024-08-30T14:29:00+02:00",
+            "LAST_ACTIVITY_BY": "1",
+            "UF_CRM_1721244482250": "Hello world!",
+            "PARENT_ID_153": "22",
+        }
+    }
+
+
+@pytest.fixture
+def sample_crm_deal_list_response() -> dict:
+    """Return sample response for crm.deal.list API."""
+    return {
+        "result": [
+            {
+                "ID": "410",
+                "TITLE": "New Deal #1",
+                "TYPE_ID": "COMPLEX",
+                "CATEGORY_ID": "0",
+                "STAGE_ID": "PREPARATION",
+                "OPPORTUNITY": "1000000.00",
+                "ASSIGNED_BY_ID": "1",
+                "CONTACT_ID": "84",
+                "DATE_CREATE": "2024-08-30T14:29:00+02:00",
+                "UF_CRM_1721244482250": "Hello world!",
+            },
+            {
+                "ID": "411",
+                "TITLE": "New Deal #2",
+                "TYPE_ID": "SALE",
+                "CATEGORY_ID": "1",
+                "STAGE_ID": "C1:NEW",
+                "OPPORTUNITY": "25000.00",
+                "ASSIGNED_BY_ID": "6",
+                "CONTACT_ID": "85",
+                "DATE_CREATE": "2024-09-01T10:00:00+02:00",
+            },
+        ],
+        "total": 120,
+        "next": 50,
+    }
+
+
+@pytest.fixture
+def sample_crm_deal_fields_response() -> dict:
+    """Return sample response for crm.deal.fields API."""
+    return {
+        "result": {
+            "ID": {
+                "type": "integer",
+                "isRequired": False,
+                "isReadOnly": True,
+                "isImmutable": False,
+                "isMultiple": False,
+                "isDynamic": False,
+                "title": "ID",
+            },
+            "TITLE": {
+                "type": "string",
+                "isRequired": True,
+                "isReadOnly": False,
+                "isImmutable": False,
+                "isMultiple": False,
+                "isDynamic": False,
+                "title": "Title",
+            },
+            "CONTACT_ID": {
+                "type": "crm_contact",
+                "isRequired": False,
+                "isReadOnly": False,
+                "isImmutable": False,
+                "isMultiple": False,
+                "isDynamic": False,
+                "title": "Contact",
+            },
+            "ASSIGNED_BY_ID": {
+                "type": "user",
+                "isRequired": False,
+                "isReadOnly": False,
+                "isImmutable": False,
+                "isMultiple": False,
+                "isDynamic": False,
+                "title": "Responsible",
+            },
+        }
+    }
+
+
+@pytest.fixture
+def sample_crm_deal_productrows_get_response() -> dict:
+    """Return sample response for crm.deal.productrows.get API."""
+    return {
+        "result": [
+            {
+                "ID": "120",
+                "PRODUCT_ID": "101",
+                "PRODUCT_NAME": "Website Subscription",
+                "PRICE": "99.00",
+                "QUANTITY": "1",
+                "DISCOUNT_SUM": "0.00",
+                "TAX_RATE": "0.00",
+                "CURRENCY": "USD",
+            },
+            {
+                "ID": "121",
+                "PRODUCT_ID": "102",
+                "PRODUCT_NAME": "Onboarding Package",
+                "PRICE": "250.00",
+                "QUANTITY": "1",
+                "DISCOUNT_SUM": "25.00",
+                "TAX_RATE": "0.00",
+                "CURRENCY": "USD",
+            },
+        ]
+    }
+
+
+@pytest.fixture
+def sample_crm_deal_add_response() -> dict:
+    """Return sample response for crm.deal.add API."""
+    return {"result": 512}
+
+
+@pytest.fixture
+def sample_crm_deal_update_response() -> dict:
+    """Return sample response for crm.deal.update API."""
+    return {"result": True}
+
+
+@pytest.fixture
+def sample_crm_deal_delete_response() -> dict:
+    """Return sample response for crm.deal.delete API."""
+    return {"result": True}
+
+
+@pytest.fixture
 def sample_task_comment_list_response() -> dict:
     """Return sample response for task.commentitem.getlist API."""
     return {

@@ -128,6 +128,213 @@ async def _task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _crm_deal_get(id: int) -> dict[str, Any]:
+    """Get detailed CRM deal information by ID.
+
+    Args:
+        id: Deal ID
+
+    Returns:
+        Deal details from crm.deal.get, including dynamic UF_CRM_* and PARENT_ID_* fields.
+    """
+    client = get_client()
+
+    try:
+        deal = await client.crm_deal_get(deal_id=id)
+        return deal.to_result()
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM deal get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM deal get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _crm_deal_fields() -> dict[str, Any]:
+    """Get available CRM deal fields (crm.deal.fields)."""
+    client = get_client()
+
+    try:
+        return await client.crm_deal_fields()
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM deal fields: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM deal fields: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _crm_deal_list(
+    filter: dict[str, Any] | None = None,
+    order: dict[str, str] | None = None,
+    select: list[str] | None = None,
+    start: int = 0,
+    contactId: int | None = None,
+) -> dict[str, Any]:
+    """Get CRM deals list with pagination metadata (crm.deal.list).
+
+    Args:
+        filter: Deal filter object
+        order: Sort object (field -> ASC/DESC)
+        select: List of fields to return
+        start: Pagination offset (0, 50, 100, ...)
+        contactId: Filter by primary contact id (CONTACT_ID)
+
+    Returns:
+        Object with items, total, next, hasMore, and current start.
+    """
+    client = get_client()
+    filter_payload = dict(filter) if filter is not None else {}
+
+    # Bitrix24 explicitly does not support CONTACT_IDS in crm.deal.list filter.
+    if "CONTACT_IDS" in filter_payload:
+        raise RuntimeError(
+            "crm.deal.list does not support CONTACT_IDS. "
+            "Use crm.item.list or crm.deal.contact.items.* for multi-contact filtering."
+        )
+
+    if contactId is not None:
+        existing_contact_id = filter_payload.get("CONTACT_ID")
+        if existing_contact_id is not None and str(existing_contact_id) != str(contactId):
+            raise RuntimeError(
+                "Conflicting contact filters: both contactId and filter.CONTACT_ID are set "
+                "with different values."
+            )
+        filter_payload["CONTACT_ID"] = contactId
+
+    try:
+        page = await client.crm_deal_list(
+            filter=filter_payload,
+            order=order,
+            select=select,
+            start=start,
+        )
+        next_start = page.get("next")
+        return {
+            "items": page.get("items", []),
+            "total": page.get("total"),
+            "next": next_start,
+            "hasMore": next_start is not None,
+            "start": start,
+        }
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM deal list: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM deal list: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _crm_deal_productrows_get(id: int) -> dict[str, Any]:
+    """Get products attached to a CRM deal (crm.deal.productrows.get).
+
+    Args:
+        id: Deal ID
+
+    Returns:
+        Object containing dealId, items, and count.
+    """
+    client = get_client()
+
+    try:
+        items = await client.crm_deal_productrows_get(deal_id=id)
+        return {
+            "dealId": id,
+            "items": items,
+            "count": len(items),
+        }
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM deal product rows get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM deal product rows get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _crm_deal_add(fields: dict[str, Any]) -> dict[str, Any]:
+    """Create a CRM deal (crm.deal.add).
+
+    Args:
+        fields: Deal fields payload
+
+    Returns:
+        Object containing id and created flag.
+    """
+    if not fields:
+        raise RuntimeError("Deal fields must not be empty.")
+
+    client = get_client()
+
+    try:
+        deal_id = await client.crm_deal_add(fields=fields)
+        return {"id": deal_id, "created": True}
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM deal add: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM deal add: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _crm_deal_update(id: int, fields: dict[str, Any]) -> dict[str, Any]:
+    """Update a CRM deal (crm.deal.update).
+
+    Args:
+        id: Deal ID
+        fields: Deal fields payload
+
+    Returns:
+        Object containing id and updated flag.
+    """
+    if id <= 0:
+        raise RuntimeError("Deal id must be greater than 0.")
+    if not fields:
+        raise RuntimeError("Deal fields must not be empty.")
+
+    client = get_client()
+
+    try:
+        updated = await client.crm_deal_update(deal_id=id, fields=fields)
+        return {"id": id, "updated": updated}
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM deal update: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM deal update: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _crm_deal_delete(id: int) -> dict[str, Any]:
+    """Delete a CRM deal (crm.deal.delete).
+
+    Args:
+        id: Deal ID
+
+    Returns:
+        Object containing id and deleted flag.
+    """
+    if id <= 0:
+        raise RuntimeError("Deal id must be greater than 0.")
+
+    client = get_client()
+
+    try:
+        deleted = await client.crm_deal_delete(deal_id=id)
+        return {"id": id, "deleted": deleted}
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM deal delete: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM deal delete: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _task_comment_add(id: int, message: str) -> dict[str, Any]:
     """Add a comment to a task.
 
@@ -991,6 +1198,65 @@ async def task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
         includeComments: If True, include task comments (legacy API) in the response
     """
     return await _task_get(id=id, includeComments=includeComments)
+
+
+@mcp.tool
+async def crm_deal_get(id: int) -> dict[str, Any]:
+    """Get CRM deal details by ID (crm.deal.get), including dynamic user fields."""
+    return await _crm_deal_get(id=id)
+
+
+@mcp.tool
+async def crm_deal_fields() -> dict[str, Any]:
+    """Get available deal field definitions (crm.deal.fields)."""
+    return await _crm_deal_fields()
+
+
+@mcp.tool
+async def crm_deal_list(
+    filter: dict[str, Any] | None = None,
+    order: dict[str, str] | None = None,
+    select: list[str] | None = None,
+    start: int = 0,
+    contactId: int | None = None,
+) -> dict[str, Any]:
+    """Get CRM deals list (crm.deal.list) with paging.
+
+    This method works but Bitrix24 recommends crm.item.list for new development.
+    Use contactId for primary-contact filtering (CONTACT_ID).
+    For multi-contact filtering, crm.deal.list does not support CONTACT_IDS.
+    """
+    return await _crm_deal_list(
+        filter=filter,
+        order=order,
+        select=select,
+        start=start,
+        contactId=contactId,
+    )
+
+
+@mcp.tool
+async def crm_deal_productrows_get(id: int) -> dict[str, Any]:
+    """Get products attached to a deal (crm.deal.productrows.get)."""
+    return await _crm_deal_productrows_get(id=id)
+
+
+@mcp.tool
+async def crm_deal_add(fields: dict[str, Any]) -> dict[str, Any]:
+    """Create a CRM deal (crm.deal.add)."""
+    return await _crm_deal_add(fields=fields)
+
+
+@mcp.tool
+async def crm_deal_update(id: int, fields: dict[str, Any]) -> dict[str, Any]:
+    """Update a CRM deal (crm.deal.update)."""
+    return await _crm_deal_update(id=id, fields=fields)
+
+
+@mcp.tool
+async def crm_deal_delete(id: int) -> dict[str, Any]:
+    """Delete a CRM deal (crm.deal.delete)."""
+    return await _crm_deal_delete(id=id)
 
 
 @mcp.tool

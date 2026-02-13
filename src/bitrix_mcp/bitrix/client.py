@@ -12,6 +12,7 @@ import httpx
 from .types import (
     BitrixAPIError,
     BitrixConnectionError,
+    BitrixDeal,
     BitrixGroup,
     BitrixScrumEpic,
     BitrixScrumKanbanStage,
@@ -138,15 +139,17 @@ class Bitrix24Client:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.close()
 
-    async def _request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Make a request to Bitrix24 REST API.
+    async def _request_raw(
+        self, method: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Make a request to Bitrix24 REST API and return full JSON payload.
 
         Args:
             method: API method name (e.g., 'tasks.task.list')
             params: Request parameters
 
         Returns:
-            API response result
+            Full API response payload, including top-level fields like result/total/next.
 
         Raises:
             BitrixAPIError: On API error response
@@ -171,6 +174,11 @@ class Bitrix24Client:
             )
 
         data = response.json()
+        if not isinstance(data, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from Bitrix24",
+                error_code="UNEXPECTED_RESPONSE",
+            )
 
         # Check for API-level errors
         if "error" in data:
@@ -180,6 +188,23 @@ class Bitrix24Client:
                 error_description=data.get("error_description"),
             )
 
+        return data
+
+    async def _request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Make a request to Bitrix24 REST API and return the `result` field.
+
+        Args:
+            method: API method name (e.g., 'tasks.task.list')
+            params: Request parameters
+
+        Returns:
+            API response result
+
+        Raises:
+            BitrixAPIError: On API error response
+            BitrixConnectionError: On connection error
+        """
+        data = await self._request_raw(method, params)
         return data.get("result", {})
 
     async def task_list(
@@ -238,6 +263,239 @@ class Bitrix24Client:
             raise BitrixAPIError(f"Task {task_id} not found", error_code="TASK_NOT_FOUND")
 
         return BitrixTask.model_validate(task_data)
+
+    async def crm_deal_get(self, deal_id: int) -> BitrixDeal:
+        """Get a single CRM deal by ID (crm.deal.get).
+
+        Args:
+            deal_id: Deal ID
+
+        Returns:
+            BitrixDeal object
+
+        Raises:
+            BitrixAPIError: If deal is not found or response format is unexpected
+        """
+        result = await self._request("crm.deal.get", {"id": deal_id})
+
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from crm.deal.get",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        if not result:
+            raise BitrixAPIError(f"Deal {deal_id} not found", error_code="DEAL_NOT_FOUND")
+
+        return BitrixDeal.model_validate(result)
+
+    async def crm_deal_fields(self) -> dict[str, Any]:
+        """Get available CRM deal fields (crm.deal.fields).
+
+        Returns:
+            Mapping of field code -> field metadata.
+
+        Raises:
+            BitrixAPIError: If response format is unexpected
+        """
+        result = await self._request("crm.deal.fields", {})
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from crm.deal.fields",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+        return result
+
+    async def crm_deal_list(
+        self,
+        *,
+        filter: dict[str, Any] | None = None,
+        order: dict[str, str] | None = None,
+        select: list[str] | None = None,
+        start: int = 0,
+    ) -> dict[str, Any]:
+        """Get a list of CRM deals (crm.deal.list).
+
+        Args:
+            filter: Deal filter object
+            order: Sort object (field -> ASC/DESC)
+            select: List of fields to return
+            start: Pagination offset (0, 50, 100, ...)
+
+        Returns:
+            Dict with `items` (deal rows), `total` (optional), and `next` (optional).
+
+        Raises:
+            BitrixAPIError: If response format is unexpected
+        """
+        params: dict[str, Any] = {
+            "filter": filter or {},
+            "order": order or {},
+            "select": select or ["*", "UF_*"],
+            "start": start,
+        }
+
+        data = await self._request_raw("crm.deal.list", params)
+        result = data.get("result")
+        if not isinstance(result, list):
+            raise BitrixAPIError(
+                "Unexpected response format from crm.deal.list",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        items: list[dict[str, Any]] = []
+        for item in result:
+            if not isinstance(item, dict):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.deal.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+            items.append(item)
+
+        total_raw = data.get("total")
+        total: int | None = None
+        if total_raw is not None:
+            try:
+                total = int(total_raw)
+            except (TypeError, ValueError):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.deal.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+
+        next_raw = data.get("next")
+        next_start: int | None = None
+        if next_raw is not None:
+            try:
+                next_start = int(next_raw)
+            except (TypeError, ValueError):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.deal.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+
+        return {"items": items, "total": total, "next": next_start}
+
+    async def crm_deal_productrows_get(self, deal_id: int) -> list[dict[str, Any]]:
+        """Get product rows attached to a CRM deal (crm.deal.productrows.get).
+
+        Args:
+            deal_id: Deal ID
+
+        Returns:
+            List of product row objects.
+
+        Raises:
+            BitrixAPIError: If response format is unexpected
+        """
+        result = await self._request("crm.deal.productrows.get", {"id": deal_id})
+
+        if not isinstance(result, list):
+            raise BitrixAPIError(
+                "Unexpected response format from crm.deal.productrows.get",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        product_rows: list[dict[str, Any]] = []
+        for row in result:
+            if not isinstance(row, dict):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.deal.productrows.get",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+            product_rows.append(row)
+
+        return product_rows
+
+    async def crm_deal_add(self, fields: dict[str, Any]) -> int:
+        """Create a CRM deal (crm.deal.add).
+
+        Args:
+            fields: Deal fields payload
+
+        Returns:
+            Created deal ID.
+
+        Raises:
+            ValueError: If fields payload is empty
+            BitrixAPIError: If response format is unexpected
+        """
+        if not fields:
+            raise ValueError("Deal fields must not be empty.")
+
+        result = await self._request("crm.deal.add", {"fields": fields})
+
+        if isinstance(result, (int, str)):
+            return int(result)
+
+        if isinstance(result, dict):
+            deal_id = result.get("ID") or result.get("id") or result.get("dealId")
+            if deal_id is not None:
+                return int(deal_id)
+
+        raise BitrixAPIError(
+            "Unexpected response format from crm.deal.add",
+            error_code="UNEXPECTED_RESPONSE",
+        )
+
+    async def crm_deal_update(self, deal_id: int, fields: dict[str, Any]) -> bool:
+        """Update a CRM deal (crm.deal.update).
+
+        Args:
+            deal_id: Deal ID
+            fields: Deal fields payload
+
+        Returns:
+            True when update is successful, else False.
+
+        Raises:
+            ValueError: If deal_id is invalid or fields payload is empty
+            BitrixAPIError: If response format is unexpected
+        """
+        if deal_id <= 0:
+            raise ValueError("Deal id must be greater than 0.")
+        if not fields:
+            raise ValueError("Deal fields must not be empty.")
+
+        result = await self._request("crm.deal.update", {"id": deal_id, "fields": fields})
+
+        if isinstance(result, bool):
+            return result
+        if isinstance(result, (int, str)):
+            return str(result).strip().lower() in {"1", "true", "yes"}
+
+        raise BitrixAPIError(
+            "Unexpected response format from crm.deal.update",
+            error_code="UNEXPECTED_RESPONSE",
+        )
+
+    async def crm_deal_delete(self, deal_id: int) -> bool:
+        """Delete a CRM deal (crm.deal.delete).
+
+        Args:
+            deal_id: Deal ID
+
+        Returns:
+            True when delete is successful, else False.
+
+        Raises:
+            ValueError: If deal_id is invalid
+            BitrixAPIError: If response format is unexpected
+        """
+        if deal_id <= 0:
+            raise ValueError("Deal id must be greater than 0.")
+
+        result = await self._request("crm.deal.delete", {"id": deal_id})
+
+        if isinstance(result, bool):
+            return result
+        if isinstance(result, (int, str)):
+            return str(result).strip().lower() in {"1", "true", "yes"}
+
+        raise BitrixAPIError(
+            "Unexpected response format from crm.deal.delete",
+            error_code="UNEXPECTED_RESPONSE",
+        )
 
     async def task_add(
         self,

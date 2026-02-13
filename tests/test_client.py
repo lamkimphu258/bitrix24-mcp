@@ -189,6 +189,494 @@ class TestTaskGet:
                 await client.task_get(task_id=99999)
 
 
+class TestCrmDealGet:
+    """Tests for crm_deal_get method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_get_success(
+        self, mock_webhook_url, sample_crm_deal_get_response, mock_bitrix_api
+    ):
+        """crm_deal_get should return parsed deal details."""
+        mock_bitrix_api.post("crm.deal.get").mock(
+            return_value=Response(200, json=sample_crm_deal_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            deal = await client.crm_deal_get(deal_id=410)
+
+        assert deal.id == "410"
+        assert deal.title == "New Deal #1"
+        assert deal.stage_id == "PREPARATION"
+        assert deal.currency_id == "EUR"
+        assert deal.model_extra is not None
+        assert deal.model_extra.get("UF_CRM_1721244482250") == "Hello world!"
+        assert deal.model_extra.get("PARENT_ID_153") == "22"
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_get_sends_id_param(
+        self, mock_webhook_url, sample_crm_deal_get_response, mock_bitrix_api
+    ):
+        """crm_deal_get should send correct id payload."""
+        mock_bitrix_api.post("crm.deal.get").mock(
+            return_value=Response(200, json=sample_crm_deal_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_deal_get(deal_id=410)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 410
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_get_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_deal_get should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.deal.get").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Not found"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Not found"):
+                await client.crm_deal_get(deal_id=99999)
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_get_empty_result_raises(self, mock_webhook_url, mock_bitrix_api):
+        """crm_deal_get should raise BitrixAPIError when result is empty."""
+        mock_bitrix_api.post("crm.deal.get").mock(return_value=Response(200, json={"result": {}}))
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Deal 410 not found"):
+                await client.crm_deal_get(deal_id=410)
+
+
+class TestCrmDealFields:
+    """Tests for crm_deal_fields method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_fields_success(
+        self, mock_webhook_url, sample_crm_deal_fields_response, mock_bitrix_api
+    ):
+        """crm_deal_fields should return field metadata map."""
+        mock_bitrix_api.post("crm.deal.fields").mock(
+            return_value=Response(200, json=sample_crm_deal_fields_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            fields = await client.crm_deal_fields()
+
+        assert "ID" in fields
+        assert "TITLE" in fields
+        assert "CONTACT_ID" in fields
+        assert fields["CONTACT_ID"]["type"] == "crm_contact"
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_fields_sends_empty_payload(
+        self, mock_webhook_url, sample_crm_deal_fields_response, mock_bitrix_api
+    ):
+        """crm_deal_fields should send an empty object payload."""
+        mock_bitrix_api.post("crm.deal.fields").mock(
+            return_value=Response(200, json=sample_crm_deal_fields_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_deal_fields()
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body == {}
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_fields_unexpected_result_raises(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """crm_deal_fields should raise BitrixAPIError on unexpected result shape."""
+        mock_bitrix_api.post("crm.deal.fields").mock(
+            return_value=Response(200, json={"result": []})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected response format"):
+                await client.crm_deal_fields()
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_fields_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_deal_fields should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.deal.fields").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Access denied"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Access denied"):
+                await client.crm_deal_fields()
+
+
+class TestCrmDealList:
+    """Tests for crm_deal_list method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_success(
+        self, mock_webhook_url, sample_crm_deal_list_response, mock_bitrix_api
+    ):
+        """crm_deal_list should return deals and pagination metadata."""
+        mock_bitrix_api.post("crm.deal.list").mock(
+            return_value=Response(200, json=sample_crm_deal_list_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.crm_deal_list(
+                filter={"CATEGORY_ID": 1},
+                order={"TITLE": "ASC"},
+                select=["ID", "TITLE", "STAGE_ID"],
+                start=50,
+            )
+
+        assert len(result["items"]) == 2
+        assert result["items"][0]["ID"] == "410"
+        assert result["items"][0]["UF_CRM_1721244482250"] == "Hello world!"
+        assert result["items"][0]["CONTACT_ID"] == "84"
+        assert result["total"] == 120
+        assert result["next"] == 50
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_sends_payload(
+        self, mock_webhook_url, sample_crm_deal_list_response, mock_bitrix_api
+    ):
+        """crm_deal_list should send filter/order/select/start payload."""
+        mock_bitrix_api.post("crm.deal.list").mock(
+            return_value=Response(200, json=sample_crm_deal_list_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_deal_list(
+                filter={"STAGE_ID": "C1:NEW"},
+                order={"DATE_CREATE": "DESC"},
+                select=["ID", "TITLE", "DATE_CREATE"],
+                start=100,
+            )
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["filter"] == {"STAGE_ID": "C1:NEW"}
+        assert body["order"] == {"DATE_CREATE": "DESC"}
+        assert body["select"] == ["ID", "TITLE", "DATE_CREATE"]
+        assert body["start"] == 100
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_without_next(self, mock_webhook_url, mock_bitrix_api):
+        """crm_deal_list should tolerate missing total/next in response."""
+        mock_bitrix_api.post("crm.deal.list").mock(
+            return_value=Response(
+                200,
+                json={"result": [{"ID": "410", "TITLE": "New Deal #1"}]},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.crm_deal_list()
+
+        assert len(result["items"]) == 1
+        assert result["total"] is None
+        assert result["next"] is None
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_deal_list should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.deal.list").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Not found"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Not found"):
+                await client.crm_deal_list()
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_list_unexpected_result_raises(self, mock_webhook_url, mock_bitrix_api):
+        """crm_deal_list should raise BitrixAPIError on unexpected result shape."""
+        mock_bitrix_api.post("crm.deal.list").mock(
+            return_value=Response(200, json={"result": {"ID": "410"}})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected response format"):
+                await client.crm_deal_list()
+
+
+class TestCrmDealProductRowsGet:
+    """Tests for crm_deal_productrows_get method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_productrows_get_success(
+        self, mock_webhook_url, sample_crm_deal_productrows_get_response, mock_bitrix_api
+    ):
+        """crm_deal_productrows_get should return product row list."""
+        mock_bitrix_api.post("crm.deal.productrows.get").mock(
+            return_value=Response(200, json=sample_crm_deal_productrows_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            rows = await client.crm_deal_productrows_get(deal_id=410)
+
+        assert len(rows) == 2
+        assert rows[0]["PRODUCT_ID"] == "101"
+        assert rows[0]["PRODUCT_NAME"] == "Website Subscription"
+        assert rows[1]["PRODUCT_ID"] == "102"
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_productrows_get_sends_id_param(
+        self, mock_webhook_url, sample_crm_deal_productrows_get_response, mock_bitrix_api
+    ):
+        """crm_deal_productrows_get should send correct id payload."""
+        mock_bitrix_api.post("crm.deal.productrows.get").mock(
+            return_value=Response(200, json=sample_crm_deal_productrows_get_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_deal_productrows_get(deal_id=410)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 410
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_productrows_get_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_deal_productrows_get should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.deal.productrows.get").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Deal not found"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Deal not found"):
+                await client.crm_deal_productrows_get(deal_id=99999)
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_productrows_get_unexpected_result_raises(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """crm_deal_productrows_get should raise on unexpected result shape."""
+        mock_bitrix_api.post("crm.deal.productrows.get").mock(
+            return_value=Response(200, json={"result": {"ID": "120"}})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected response format"):
+                await client.crm_deal_productrows_get(deal_id=410)
+
+
+class TestCrmDealAdd:
+    """Tests for crm_deal_add method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_add_success(
+        self, mock_webhook_url, sample_crm_deal_add_response, mock_bitrix_api
+    ):
+        """crm_deal_add should return created deal ID."""
+        mock_bitrix_api.post("crm.deal.add").mock(
+            return_value=Response(200, json=sample_crm_deal_add_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            deal_id = await client.crm_deal_add(fields={"TITLE": "New Deal"})
+
+        assert deal_id == 512
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_add_sends_fields_payload(
+        self, mock_webhook_url, sample_crm_deal_add_response, mock_bitrix_api
+    ):
+        """crm_deal_add should send fields payload as-is."""
+        mock_bitrix_api.post("crm.deal.add").mock(
+            return_value=Response(200, json=sample_crm_deal_add_response)
+        )
+
+        fields = {
+            "TITLE": "New Deal #2",
+            "STAGE_ID": "NEW",
+            "OPPORTUNITY": "1500.00",
+            "CURRENCY_ID": "USD",
+        }
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_deal_add(fields=fields)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["fields"] == fields
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_add_requires_non_empty_fields(self, mock_webhook_url):
+        """crm_deal_add should reject empty fields."""
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(ValueError, match="must not be empty"):
+                await client.crm_deal_add(fields={})
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_add_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_deal_add should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.deal.add").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Access denied"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Access denied"):
+                await client.crm_deal_add(fields={"TITLE": "Blocked Deal"})
+
+
+class TestCrmDealUpdate:
+    """Tests for crm_deal_update method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_update_success(
+        self, mock_webhook_url, sample_crm_deal_update_response, mock_bitrix_api
+    ):
+        """crm_deal_update should return update status."""
+        mock_bitrix_api.post("crm.deal.update").mock(
+            return_value=Response(200, json=sample_crm_deal_update_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            updated = await client.crm_deal_update(
+                deal_id=410,
+                fields={"TITLE": "Updated Deal Title"},
+            )
+
+        assert updated is True
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_update_sends_payload(
+        self, mock_webhook_url, sample_crm_deal_update_response, mock_bitrix_api
+    ):
+        """crm_deal_update should send id and fields payload."""
+        mock_bitrix_api.post("crm.deal.update").mock(
+            return_value=Response(200, json=sample_crm_deal_update_response)
+        )
+
+        fields = {
+            "TITLE": "Updated Deal Title",
+            "STAGE_ID": "PREPAYMENT_INVOICE",
+            "OPPORTUNITY": "2000.00",
+        }
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_deal_update(deal_id=410, fields=fields)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 410
+        assert body["fields"] == fields
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_update_requires_valid_id(self, mock_webhook_url):
+        """crm_deal_update should reject non-positive deal IDs."""
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(ValueError, match="greater than 0"):
+                await client.crm_deal_update(deal_id=0, fields={"TITLE": "Invalid"})
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_update_requires_non_empty_fields(self, mock_webhook_url):
+        """crm_deal_update should reject empty fields."""
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(ValueError, match="must not be empty"):
+                await client.crm_deal_update(deal_id=410, fields={})
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_update_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_deal_update should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.deal.update").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Update denied"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Update denied"):
+                await client.crm_deal_update(deal_id=410, fields={"TITLE": "Blocked"})
+
+
+class TestCrmDealDelete:
+    """Tests for crm_deal_delete method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_delete_success(
+        self, mock_webhook_url, sample_crm_deal_delete_response, mock_bitrix_api
+    ):
+        """crm_deal_delete should return delete status."""
+        mock_bitrix_api.post("crm.deal.delete").mock(
+            return_value=Response(200, json=sample_crm_deal_delete_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            deleted = await client.crm_deal_delete(deal_id=410)
+
+        assert deleted is True
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_delete_sends_id_payload(
+        self, mock_webhook_url, sample_crm_deal_delete_response, mock_bitrix_api
+    ):
+        """crm_deal_delete should send id payload."""
+        mock_bitrix_api.post("crm.deal.delete").mock(
+            return_value=Response(200, json=sample_crm_deal_delete_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_deal_delete(deal_id=410)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 410
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_delete_requires_valid_id(self, mock_webhook_url):
+        """crm_deal_delete should reject non-positive deal IDs."""
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(ValueError, match="greater than 0"):
+                await client.crm_deal_delete(deal_id=0)
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_delete_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_deal_delete should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.deal.delete").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Deal not found"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Deal not found"):
+                await client.crm_deal_delete(deal_id=99999)
+
+
 class TestTaskAdd:
     """Tests for task_add method."""
 
