@@ -14,6 +14,7 @@ from bitrix_mcp.server import (
     _crm_deal_list,
     _crm_deal_productrows_get,
     _crm_deal_update,
+    _crm_lead_get,
     _group_search,
     _scrum_epic_list,
     _scrum_task_create,
@@ -293,6 +294,68 @@ class TestTaskGet:
         body = json.loads(comment_call.content)
         assert body["TASKID"] == 456
         assert body["ORDER"]["POST_DATE"] == "asc"
+
+
+class TestCrmLeadGet:
+    """Tests for crm_lead_get tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_get_basic(self, setup_client, mock_bitrix_api):
+        """crm_lead_get should return normalized lead details."""
+        response = {
+            "result": {
+                "ID": "610",
+                "TITLE": "Lead from Website",
+                "STATUS_ID": "NEW",
+                "OPENED": "Y",
+                "ASSIGNED_BY_ID": "1",
+                "COMPANY_ID": "9",
+                "CONTACT_ID": "84",
+                "SOURCE_ID": "WEB",
+                "COMMENTS": "Interested in annual plan",
+                "UF_CRM_1721244482250": "Custom value",
+                "IS_RETURN_CUSTOMER": "N",
+            }
+        }
+        mock_bitrix_api.post("crm.lead.get").mock(return_value=Response(200, json=response))
+
+        result = await _crm_lead_get(id=610)
+
+        assert result["id"] == 610
+        assert result["title"] == "Lead from Website"
+        assert result["statusId"] == "NEW"
+        assert result["opened"] is True
+        assert result["assignedById"] == 1
+        assert result["companyId"] == 9
+        assert result["contactId"] == 84
+        assert result["userFields"]["UF_CRM_1721244482250"] == "Custom value"
+        assert result["extraFields"]["IS_RETURN_CUSTOMER"] == "N"
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_get_api_error(self, setup_client, mock_bitrix_api):
+        """crm_lead_get should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.lead.get").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Lead not found"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_lead_get(id=99999)
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_get_connection_error(self, setup_client, monkeypatch):
+        """crm_lead_get should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_lead_get", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_lead_get(id=610)
 
 
 class TestCrmDealGet:

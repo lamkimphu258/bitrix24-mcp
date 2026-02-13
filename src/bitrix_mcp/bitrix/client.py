@@ -14,6 +14,7 @@ from .types import (
     BitrixConnectionError,
     BitrixDeal,
     BitrixGroup,
+    BitrixLead,
     BitrixScrumEpic,
     BitrixScrumKanbanStage,
     BitrixScrumSprint,
@@ -288,6 +289,31 @@ class Bitrix24Client:
             raise BitrixAPIError(f"Deal {deal_id} not found", error_code="DEAL_NOT_FOUND")
 
         return BitrixDeal.model_validate(result)
+
+    async def crm_lead_get(self, lead_id: int) -> BitrixLead:
+        """Get a single CRM lead by ID (crm.lead.get).
+
+        Args:
+            lead_id: Lead ID
+
+        Returns:
+            BitrixLead object
+
+        Raises:
+            BitrixAPIError: If lead is not found or response format is unexpected
+        """
+        result = await self._request("crm.lead.get", {"id": lead_id})
+
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from crm.lead.get",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        if not result:
+            raise BitrixAPIError(f"Lead {lead_id} not found", error_code="LEAD_NOT_FOUND")
+
+        return BitrixLead.model_validate(result)
 
     async def crm_deal_fields(self) -> dict[str, Any]:
         """Get available CRM deal fields (crm.deal.fields).

@@ -278,6 +278,102 @@ class BitrixDeal(BaseModel):
         return result
 
 
+class BitrixLead(BaseModel):
+    """Represents a Bitrix24 CRM lead (crm.lead.get)."""
+
+    id: str = Field(alias="ID")
+    title: str = Field(alias="TITLE")
+    status_id: str | None = Field(default=None, alias="STATUS_ID")
+    opened: str | None = Field(default=None, alias="OPENED")
+    assigned_by_id: str | None = Field(default=None, alias="ASSIGNED_BY_ID")
+    company_id: str | None = Field(default=None, alias="COMPANY_ID")
+    contact_id: str | None = Field(default=None, alias="CONTACT_ID")
+    source_id: str | None = Field(default=None, alias="SOURCE_ID")
+    source_description: str | None = Field(default=None, alias="SOURCE_DESCRIPTION")
+    comments: str | None = Field(default=None, alias="COMMENTS")
+    opportunity: str | None = Field(default=None, alias="OPPORTUNITY")
+    currency_id: str | None = Field(default=None, alias="CURRENCY_ID")
+    address: str | None = Field(default=None, alias="ADDRESS")
+    address_city: str | None = Field(default=None, alias="ADDRESS_CITY")
+    address_region: str | None = Field(default=None, alias="ADDRESS_REGION")
+    address_province: str | None = Field(default=None, alias="ADDRESS_PROVINCE")
+    address_country: str | None = Field(default=None, alias="ADDRESS_COUNTRY")
+    address_postal_code: str | None = Field(default=None, alias="ADDRESS_POSTAL_CODE")
+    date_create: str | None = Field(default=None, alias="DATE_CREATE")
+    date_modify: str | None = Field(default=None, alias="DATE_MODIFY")
+    created_by_id: str | None = Field(default=None, alias="CREATED_BY_ID")
+    modify_by_id: str | None = Field(default=None, alias="MODIFY_BY_ID")
+    moved_by_id: str | None = Field(default=None, alias="MOVED_BY_ID")
+    moved_time: str | None = Field(default=None, alias="MOVED_TIME")
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+    @staticmethod
+    def _to_int(value: Any) -> int | None:  # noqa: ANN401
+        """Convert numeric-like values to int when possible."""
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _to_flag(value: Any) -> bool | None:  # noqa: ANN401
+        """Convert Bitrix24 Y/N flags to booleans."""
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip().upper()
+        if normalized == "Y":
+            return True
+        if normalized == "N":
+            return False
+        return None
+
+    def to_result(self) -> dict[str, Any]:
+        """Convert to result format for MCP tool response."""
+        extras = self.model_extra or {}
+        user_fields: dict[str, Any] = {}
+        extra_fields: dict[str, Any] = {}
+
+        for key, value in extras.items():
+            if key.startswith("UF_CRM_"):
+                user_fields[key] = value
+                continue
+            extra_fields[key] = value
+
+        result = {
+            "id": int(self.id),
+            "title": self.title,
+            "statusId": self.status_id,
+            "opened": self._to_flag(self.opened),
+            "assignedById": self._to_int(self.assigned_by_id),
+            "companyId": self._to_int(self.company_id),
+            "contactId": self._to_int(self.contact_id),
+            "sourceId": self.source_id,
+            "sourceDescription": self.source_description,
+            "comments": self.comments,
+            "opportunity": self.opportunity,
+            "currencyId": self.currency_id,
+            "address": self.address,
+            "addressCity": self.address_city,
+            "addressRegion": self.address_region,
+            "addressProvince": self.address_province,
+            "addressCountry": self.address_country,
+            "addressPostalCode": self.address_postal_code,
+            "dateCreate": self.date_create,
+            "dateModify": self.date_modify,
+            "createdById": self._to_int(self.created_by_id),
+            "modifyById": self._to_int(self.modify_by_id),
+            "movedById": self._to_int(self.moved_by_id),
+            "movedTime": self.moved_time,
+            "userFields": user_fields,
+        }
+        if extra_fields:
+            result["extraFields"] = extra_fields
+        return result
+
+
 class BitrixTaskStage(BaseModel):
     """Represents a Bitrix24 Kanban/"My Planner" stage (task.stages.get)."""
 

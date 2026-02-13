@@ -128,6 +128,28 @@ async def _task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _crm_lead_get(id: int) -> dict[str, Any]:
+    """Get detailed CRM lead information by ID.
+
+    Args:
+        id: Lead ID
+
+    Returns:
+        Lead details from crm.lead.get, including dynamic user fields.
+    """
+    client = get_client()
+
+    try:
+        lead = await client.crm_lead_get(lead_id=id)
+        return lead.to_result()
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM lead get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM lead get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _crm_deal_get(id: int) -> dict[str, Any]:
     """Get detailed CRM deal information by ID.
 
@@ -1198,6 +1220,12 @@ async def task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
         includeComments: If True, include task comments (legacy API) in the response
     """
     return await _task_get(id=id, includeComments=includeComments)
+
+
+@mcp.tool
+async def crm_lead_get(id: int) -> dict[str, Any]:
+    """Get CRM lead details by ID (crm.lead.get), including dynamic user fields."""
+    return await _crm_lead_get(id=id)
 
 
 @mcp.tool
