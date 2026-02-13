@@ -16,6 +16,13 @@ from bitrix_mcp.server import (
     _crm_deal_list,
     _crm_deal_productrows_get,
     _crm_deal_update,
+    _crm_lead_add,
+    _crm_lead_delete,
+    _crm_lead_get,
+    _crm_lead_list,
+    _crm_lead_productrows_get,
+    _crm_lead_update,
+    _scrum_backlog_tasks,
     _task_create,
     _task_get,
     _task_search,
@@ -453,3 +460,169 @@ class TestCrmWorkflow:
         assert deleted == {"id": 512, "deleted": True}
 
         assert mock_api.calls.call_count == 4
+
+
+class TestScrumBacklogWorkflow:
+    """Test scrum backlog retrieval workflow."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_backlog_and_paginated_tasks(
+        self,
+        setup_integration,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_1_response,
+        sample_task_list_backlog_page_2_response,
+    ):
+        """Tool should resolve backlog id and aggregate all paginated backlog tasks."""
+        mock_api = setup_integration
+
+        mock_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_api.post("tasks.task.list").mock(
+            side_effect=[
+                Response(200, json=sample_task_list_backlog_page_1_response),
+                Response(200, json=sample_task_list_backlog_page_2_response),
+            ]
+        )
+
+        result = await _scrum_backlog_tasks(groupId=205)
+
+        assert result["groupId"] == 205
+        assert result["backlogId"] == 91
+        assert result["count"] == 2
+        assert len(result["tasks"]) == 2
+        assert result["tasks"][0]["id"] == 456
+        assert result["tasks"][0]["status"] == "pending"
+        assert result["tasks"][1]["id"] == 789
+        assert result["tasks"][1]["status"] == "in_progress"
+
+    @pytest.mark.asyncio
+    async def test_fetch_backlog_with_combined_server_side_filters(
+        self,
+        setup_integration,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_2_response,
+    ):
+        """Tool should forward query/status/responsible filters to tasks.task.list."""
+        mock_api = setup_integration
+
+        mock_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_2_response)
+        )
+
+        result = await _scrum_backlog_tasks(
+            groupId=205,
+            query="welcome",
+            status="pending",
+            responsibleId=7,
+        )
+
+        assert result["groupId"] == 205
+        assert result["backlogId"] == 91
+        assert result["count"] == 1
+        assert result["tasks"][0]["id"] == 789
+
+        import json
+
+        request_body = json.loads(mock_api.calls[1].request.content)
+        assert request_body["filter"]["GROUP_ID"] == 205
+        assert request_body["filter"]["BACKLOG_ID"] == 91
+        assert request_body["filter"]["%TITLE"] == "welcome"
+        assert request_body["filter"]["STATUS"] == 2
+        assert request_body["filter"]["RESPONSIBLE_ID"] == 7
+
+
+class TestCrmLeadWorkflow:
+    """Test CRM lead workflow across lead endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_lead_lifecycle_add_get_list_update_products_delete(
+        self,
+        setup_integration,
+        sample_crm_lead_get_response,
+        sample_crm_lead_list_response,
+        sample_crm_lead_productrows_get_response,
+        sample_crm_lead_add_response,
+        sample_crm_lead_update_response,
+        sample_crm_lead_delete_response,
+    ):
+        """User can run lead lifecycle: add -> get -> list -> update -> products -> delete."""
+        mock_api = setup_integration
+
+        mock_api.post("crm.lead.add").mock(
+            return_value=Response(200, json=sample_crm_lead_add_response)
+        )
+
+        created = await _crm_lead_add(
+            fields={
+                "TITLE": "Lifecycle Lead",
+                "STATUS_ID": "NEW",
+                "OPPORTUNITY": "1200.00",
+                "CURRENCY_ID": "USD",
+            }
+        )
+        assert created == {"id": 612, "created": True}
+
+        lead_get_payload = {
+            "result": {
+                **sample_crm_lead_get_response["result"],
+                "ID": str(created["id"]),
+            }
+        }
+        mock_api.post("crm.lead.get").mock(return_value=Response(200, json=lead_get_payload))
+
+        lead = await _crm_lead_get(id=created["id"])
+        assert lead["id"] == 612
+        assert lead["title"] == "Lead from Website"
+
+        lead_list_payload = {
+            **sample_crm_lead_list_response,
+            "result": [
+                {
+                    **sample_crm_lead_list_response["result"][0],
+                    "ID": str(created["id"]),
+                }
+            ],
+        }
+        mock_api.post("crm.lead.list").mock(return_value=Response(200, json=lead_list_payload))
+
+        listed = await _crm_lead_list(
+            filter={"STATUS_ID": "NEW"},
+            select=["ID", "TITLE", "STATUS_ID"],
+            start=0,
+        )
+        assert len(listed["items"]) == 1
+        assert listed["items"][0]["ID"] == "612"
+        assert listed["hasMore"] is True
+
+        mock_api.post("crm.lead.update").mock(
+            return_value=Response(200, json=sample_crm_lead_update_response)
+        )
+
+        updated = await _crm_lead_update(
+            id=created["id"],
+            fields={"TITLE": "Lifecycle Lead Updated", "STATUS_ID": "IN_PROCESS"},
+        )
+        assert updated == {"id": 612, "updated": True}
+
+        mock_api.post("crm.lead.productrows.get").mock(
+            return_value=Response(200, json=sample_crm_lead_productrows_get_response)
+        )
+
+        products = await _crm_lead_productrows_get(id=created["id"])
+        assert products["id"] == 612
+        assert len(products["rows"]) == 2
+        assert products["rows"][0]["PRODUCT_NAME"] == "Starter Plan"
+
+        mock_api.post("crm.lead.delete").mock(
+            return_value=Response(200, json=sample_crm_lead_delete_response)
+        )
+
+        deleted = await _crm_lead_delete(id=created["id"])
+        assert deleted == {"id": 612, "deleted": True}
+
+        assert mock_api.calls.call_count == 6

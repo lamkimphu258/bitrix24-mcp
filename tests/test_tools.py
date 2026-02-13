@@ -14,7 +14,14 @@ from bitrix_mcp.server import (
     _crm_deal_list,
     _crm_deal_productrows_get,
     _crm_deal_update,
+    _crm_lead_add,
+    _crm_lead_delete,
+    _crm_lead_get,
+    _crm_lead_list,
+    _crm_lead_productrows_get,
+    _crm_lead_update,
     _group_search,
+    _scrum_backlog_tasks,
     _scrum_epic_list,
     _scrum_task_create,
     _scrum_task_get,
@@ -293,6 +300,352 @@ class TestTaskGet:
         body = json.loads(comment_call.content)
         assert body["TASKID"] == 456
         assert body["ORDER"]["POST_DATE"] == "asc"
+
+
+class TestCrmLeadGet:
+    """Tests for crm_lead_get tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_get_basic(
+        self, setup_client, sample_crm_lead_get_response, mock_bitrix_api
+    ):
+        """crm_lead_get should return normalized lead details."""
+        mock_bitrix_api.post("crm.lead.get").mock(
+            return_value=Response(200, json=sample_crm_lead_get_response)
+        )
+
+        result = await _crm_lead_get(id=610)
+
+        assert result["id"] == 610
+        assert result["title"] == "Lead from Website"
+        assert result["statusId"] == "NEW"
+        assert result["opened"] is True
+        assert result["assignedById"] == 1
+        assert result["companyId"] == 9
+        assert result["contactId"] == 84
+        assert result["userFields"]["UF_CRM_1721244482250"] == "Custom value"
+        assert result["extraFields"]["IS_RETURN_CUSTOMER"] == "N"
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_get_api_error(self, setup_client, mock_bitrix_api):
+        """crm_lead_get should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.lead.get").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Lead not found"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_lead_get(id=99999)
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_get_connection_error(self, setup_client, monkeypatch):
+        """crm_lead_get should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_lead_get", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_lead_get(id=610)
+
+
+class TestCrmLeadList:
+    """Tests for crm_lead_list tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_basic(
+        self, setup_client, sample_crm_lead_list_response, mock_bitrix_api
+    ):
+        """crm_lead_list should return lead rows with pagination metadata."""
+        mock_bitrix_api.post("crm.lead.list").mock(
+            return_value=Response(200, json=sample_crm_lead_list_response)
+        )
+
+        result = await _crm_lead_list(
+            filter={"STATUS_ID": "NEW"},
+            order={"TITLE": "ASC"},
+            select=["ID", "TITLE", "STATUS_ID"],
+            start=0,
+        )
+
+        assert len(result["items"]) == 2
+        assert result["items"][0]["ID"] == "610"
+        assert result["total"] == 95
+        assert result["next"] == 50
+        assert result["hasMore"] is True
+        assert result["start"] == 0
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_has_more_false_when_next_missing(
+        self, setup_client, mock_bitrix_api
+    ):
+        """crm_lead_list should set hasMore=False when next is absent."""
+        mock_bitrix_api.post("crm.lead.list").mock(
+            return_value=Response(
+                200,
+                json={"result": [{"ID": "610", "TITLE": "Lead from Website"}], "total": 1},
+            )
+        )
+
+        result = await _crm_lead_list(start=50)
+
+        assert len(result["items"]) == 1
+        assert result["total"] == 1
+        assert result["next"] is None
+        assert result["hasMore"] is False
+        assert result["start"] == 50
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_api_error(self, setup_client, mock_bitrix_api):
+        """crm_lead_list should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.lead.list").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Access denied"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_lead_list()
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_connection_error(self, setup_client, monkeypatch):
+        """crm_lead_list should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_lead_list", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_lead_list()
+
+
+class TestCrmLeadProductRowsGet:
+    """Tests for crm_lead_productrows_get tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_productrows_get_basic(
+        self, setup_client, sample_crm_lead_productrows_get_response, mock_bitrix_api
+    ):
+        """crm_lead_productrows_get should return id/rows."""
+        mock_bitrix_api.post("crm.lead.productrows.get").mock(
+            return_value=Response(200, json=sample_crm_lead_productrows_get_response)
+        )
+
+        result = await _crm_lead_productrows_get(id=610)
+
+        assert result["id"] == 610
+        assert len(result["rows"]) == 2
+        assert result["rows"][0]["PRODUCT_ID"] == "101"
+        assert result["rows"][1]["PRODUCT_ID"] == "102"
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 610
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_productrows_get_api_error(self, setup_client, mock_bitrix_api):
+        """crm_lead_productrows_get should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.lead.productrows.get").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Lead not found"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_lead_productrows_get(id=99999)
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_productrows_get_connection_error(self, setup_client, monkeypatch):
+        """crm_lead_productrows_get should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_lead_productrows_get", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_lead_productrows_get(id=610)
+
+
+class TestCrmLeadAdd:
+    """Tests for crm_lead_add tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_basic(
+        self, setup_client, sample_crm_lead_add_response, mock_bitrix_api
+    ):
+        """crm_lead_add should return id and created flag."""
+        mock_bitrix_api.post("crm.lead.add").mock(
+            return_value=Response(200, json=sample_crm_lead_add_response)
+        )
+
+        fields = {
+            "TITLE": "Lead from Website",
+            "STATUS_ID": "NEW",
+            "OPPORTUNITY": "1200.00",
+            "CURRENCY_ID": "USD",
+        }
+        params = {"REGISTER_SONET_EVENT": "Y"}
+        result = await _crm_lead_add(fields=fields, params=params)
+
+        assert result == {"id": 612, "created": True}
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["fields"] == fields
+        assert body["params"] == params
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_rejects_empty_fields(self, setup_client):
+        """crm_lead_add should reject empty fields."""
+        with pytest.raises(RuntimeError, match="must not be empty"):
+            await _crm_lead_add(fields={})
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_api_error(self, setup_client, mock_bitrix_api):
+        """crm_lead_add should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.lead.add").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Access denied"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_lead_add(fields={"TITLE": "Blocked Lead"})
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_add_connection_error(self, setup_client, monkeypatch):
+        """crm_lead_add should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_lead_add", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_lead_add(fields={"TITLE": "New Lead"})
+
+
+class TestCrmLeadUpdate:
+    """Tests for crm_lead_update tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_update_basic(
+        self, setup_client, sample_crm_lead_update_response, mock_bitrix_api
+    ):
+        """crm_lead_update should return id and updated flag."""
+        mock_bitrix_api.post("crm.lead.update").mock(
+            return_value=Response(200, json=sample_crm_lead_update_response)
+        )
+
+        fields = {"TITLE": "Updated Lead Title", "STATUS_ID": "IN_PROCESS"}
+        params = {"REGISTER_SONET_EVENT": "N"}
+        result = await _crm_lead_update(id=610, fields=fields, params=params)
+
+        assert result == {"id": 610, "updated": True}
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 610
+        assert body["fields"] == fields
+        assert body["params"] == params
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_update_rejects_empty_fields(self, setup_client):
+        """crm_lead_update should reject empty fields."""
+        with pytest.raises(RuntimeError, match="must not be empty"):
+            await _crm_lead_update(id=610, fields={})
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_update_api_error(self, setup_client, mock_bitrix_api):
+        """crm_lead_update should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.lead.update").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Update denied"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_lead_update(id=610, fields={"TITLE": "Blocked"})
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_update_connection_error(self, setup_client, monkeypatch):
+        """crm_lead_update should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_lead_update", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_lead_update(id=610, fields={"TITLE": "Updated"})
+
+
+class TestCrmLeadDelete:
+    """Tests for crm_lead_delete tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_delete_basic(
+        self, setup_client, sample_crm_lead_delete_response, mock_bitrix_api
+    ):
+        """crm_lead_delete should return id and deleted flag."""
+        mock_bitrix_api.post("crm.lead.delete").mock(
+            return_value=Response(200, json=sample_crm_lead_delete_response)
+        )
+
+        result = await _crm_lead_delete(id=610)
+        assert result == {"id": 610, "deleted": True}
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 610
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_delete_api_error(self, setup_client, mock_bitrix_api):
+        """crm_lead_delete should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.lead.delete").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Lead not found"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_lead_delete(id=99999)
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_delete_connection_error(self, setup_client, monkeypatch):
+        """crm_lead_delete should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_lead_delete", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_lead_delete(id=610)
 
 
 class TestCrmDealGet:
@@ -1302,6 +1655,273 @@ class TestTaskStagesMoveTask:
         """task_stages_move_task should reject when both before and after are provided."""
         with pytest.raises(RuntimeError):
             await _task_stages_move_task(id=1, stageId=2, before=3, after=4)
+
+
+class TestScrumBacklogTasks:
+    """Tests for scrum_backlog_tasks tool."""
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_returns_metadata_and_tasks(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_1_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should return backlog metadata and aggregated tasks."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            side_effect=[
+                Response(200, json=sample_task_list_backlog_page_1_response),
+                Response(200, json=sample_task_list_backlog_page_2_response),
+            ]
+        )
+
+        result = await _scrum_backlog_tasks(groupId=205)
+
+        assert result["groupId"] == 205
+        assert result["backlogId"] == 91
+        assert result["count"] == 2
+        assert len(result["tasks"]) == 2
+        assert result["tasks"][0]["id"] == 456
+        assert result["tasks"][1]["id"] == 789
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_multi_page_aggregation(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_1_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should iterate pages until next cursor is absent."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            side_effect=[
+                Response(200, json=sample_task_list_backlog_page_1_response),
+                Response(200, json=sample_task_list_backlog_page_2_response),
+            ]
+        )
+
+        result = await _scrum_backlog_tasks(groupId=205)
+
+        assert result["count"] == 2
+        assert mock_bitrix_api.calls.call_count == 3
+        assert mock_bitrix_api.calls[1].request.url.path.endswith("tasks.task.list")
+        assert mock_bitrix_api.calls[2].request.url.path.endswith("tasks.task.list")
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_sends_group_and_backlog_filters(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_1_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should include GROUP_ID and BACKLOG_ID in task list filter."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            side_effect=[
+                Response(200, json=sample_task_list_backlog_page_1_response),
+                Response(200, json=sample_task_list_backlog_page_2_response),
+            ]
+        )
+
+        await _scrum_backlog_tasks(groupId=205)
+
+        import json
+
+        first_page_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        second_page_body = json.loads(mock_bitrix_api.calls[2].request.content)
+
+        assert first_page_body["filter"]["GROUP_ID"] == 205
+        assert first_page_body["filter"]["BACKLOG_ID"] == 91
+        assert "%TITLE" not in first_page_body["filter"]
+        assert "STATUS" not in first_page_body["filter"]
+        assert "RESPONSIBLE_ID" not in first_page_body["filter"]
+        assert first_page_body["start"] == 0
+        assert second_page_body["filter"]["GROUP_ID"] == 205
+        assert second_page_body["filter"]["BACKLOG_ID"] == 91
+        assert "%TITLE" not in second_page_body["filter"]
+        assert "STATUS" not in second_page_body["filter"]
+        assert "RESPONSIBLE_ID" not in second_page_body["filter"]
+        assert second_page_body["start"] == 50
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_query_filter_maps_to_title(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should map query to %TITLE in task list filter."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_2_response)
+        )
+
+        await _scrum_backlog_tasks(groupId=205, query="welcome")
+
+        import json
+
+        request_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        assert request_body["filter"]["%TITLE"] == "welcome"
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_status_filter_maps_to_code(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should map status string to STATUS code in task list filter."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_2_response)
+        )
+
+        await _scrum_backlog_tasks(groupId=205, status="in progress")
+
+        import json
+
+        request_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        assert request_body["filter"]["STATUS"] == 3
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_responsible_filter_maps_to_id(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should map responsibleId to RESPONSIBLE_ID in task list filter."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_2_response)
+        )
+
+        await _scrum_backlog_tasks(groupId=205, responsibleId=7)
+
+        import json
+
+        request_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        assert request_body["filter"]["RESPONSIBLE_ID"] == 7
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_combined_filters_sent_together(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should send query, status, and responsible filters together."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_2_response)
+        )
+
+        await _scrum_backlog_tasks(
+            groupId=205,
+            query="welcome",
+            status="in_progress",
+            responsibleId=7,
+        )
+
+        import json
+
+        request_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        filter_payload = request_body["filter"]
+        assert filter_payload["GROUP_ID"] == 205
+        assert filter_payload["BACKLOG_ID"] == 91
+        assert filter_payload["%TITLE"] == "welcome"
+        assert filter_payload["STATUS"] == 3
+        assert filter_payload["RESPONSIBLE_ID"] == 7
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_invalid_status_raises_runtime_error(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should reject unknown status strings."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+
+        with pytest.raises(RuntimeError, match="Unknown task status"):
+            await _scrum_backlog_tasks(groupId=205, status="banana")
+
+        assert mock_bitrix_api.calls.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_empty_backlog_returns_empty_list(
+        self, setup_client, sample_scrum_backlog_get_response, mock_bitrix_api
+    ):
+        """scrum_backlog_tasks should return count=0 and tasks=[] for empty backlog."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json={"result": {"tasks": []}, "total": 0})
+        )
+
+        result = await _scrum_backlog_tasks(groupId=205)
+
+        assert result["groupId"] == 205
+        assert result["backlogId"] == 91
+        assert result["count"] == 0
+        assert result["tasks"] == []
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_connection_error_mapping(self, setup_client, monkeypatch):
+        """scrum_backlog_tasks should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "scrum_backlog_get", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _scrum_backlog_tasks(groupId=205)
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_api_error_mapping(self, setup_client, mock_bitrix_api):
+        """scrum_backlog_tasks should map API errors to RuntimeError."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(
+                200,
+                json={
+                    "error": "ERROR_CORE",
+                    "error_description": "Backlog not found",
+                },
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _scrum_backlog_tasks(groupId=205)
 
 
 class TestScrumEpicList:

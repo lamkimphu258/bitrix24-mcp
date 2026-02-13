@@ -8,12 +8,15 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import httpx
+from pydantic import ValidationError
 
 from .types import (
     BitrixAPIError,
     BitrixConnectionError,
     BitrixDeal,
     BitrixGroup,
+    BitrixLead,
+    BitrixScrumBacklog,
     BitrixScrumEpic,
     BitrixScrumKanbanStage,
     BitrixScrumSprint,
@@ -234,6 +237,109 @@ class Bitrix24Client:
 
         return [BitrixTask.model_validate(task) for task in tasks_data]
 
+    async def task_list_page(
+        self,
+        *,
+        filter: dict[str, Any] | None = None,
+        select: list[str] | None = None,
+        limit: int = 50,
+        start: int = 0,
+    ) -> dict[str, Any]:
+        """Fetch one paginated page from tasks.task.list with next/total metadata.
+
+        Args:
+            filter: Filter conditions (e.g., {"GROUP_ID": 205, "BACKLOG_ID": 91})
+            select: Fields to return (uses default if not specified)
+            limit: Maximum number of results per page (default 50)
+            start: Pagination offset (0, 50, 100, ...)
+
+        Returns:
+            Dict with `tasks` (list[BitrixTask]), `total` (optional int), and `next` (optional int)
+
+        Raises:
+            BitrixAPIError: If response format is unexpected
+        """
+        params: dict[str, Any] = {
+            "filter": filter or {},
+            "select": select or self.TASK_LIST_SELECT,
+            "limit": limit,
+            "start": start,
+        }
+
+        data = await self._request_raw("tasks.task.list", params)
+        result = data.get("result")
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.task.list",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        tasks_data = result.get("tasks")
+        if not isinstance(tasks_data, list):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.task.list",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        try:
+            tasks = [BitrixTask.model_validate(task) for task in tasks_data]
+        except ValidationError as e:
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.task.list",
+                error_code="UNEXPECTED_RESPONSE",
+            ) from e
+
+        total_raw = data.get("total")
+        total: int | None = None
+        if total_raw is not None:
+            try:
+                total = int(total_raw)
+            except (TypeError, ValueError):
+                raise BitrixAPIError(
+                    "Unexpected response format from tasks.task.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+
+        next_raw = data.get("next")
+        next_start: int | None = None
+        if next_raw is not None:
+            try:
+                next_start = int(next_raw)
+            except (TypeError, ValueError):
+                raise BitrixAPIError(
+                    "Unexpected response format from tasks.task.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+
+        return {"tasks": tasks, "total": total, "next": next_start}
+
+    async def task_list_all_pages(
+        self,
+        *,
+        filter: dict[str, Any] | None = None,
+        select: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[BitrixTask]:
+        """Fetch all task pages from tasks.task.list using the top-level `next` cursor."""
+        all_tasks: list[BitrixTask] = []
+        start = 0
+
+        while True:
+            page = await self.task_list_page(
+                filter=filter,
+                select=select,
+                limit=limit,
+                start=start,
+            )
+            all_tasks.extend(page["tasks"])
+
+            next_start = page.get("next")
+            if next_start is None or next_start == start:
+                break
+            start = next_start
+
+        return all_tasks
+
     async def task_get(
         self,
         task_id: int,
@@ -288,6 +394,237 @@ class Bitrix24Client:
             raise BitrixAPIError(f"Deal {deal_id} not found", error_code="DEAL_NOT_FOUND")
 
         return BitrixDeal.model_validate(result)
+
+    async def crm_lead_get(self, lead_id: int) -> BitrixLead:
+        """Get a single CRM lead by ID (crm.lead.get).
+
+        Args:
+            lead_id: Lead ID
+
+        Returns:
+            BitrixLead object
+
+        Raises:
+            BitrixAPIError: If lead is not found or response format is unexpected
+        """
+        result = await self._request("crm.lead.get", {"id": lead_id})
+
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from crm.lead.get",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        if not result:
+            raise BitrixAPIError(f"Lead {lead_id} not found", error_code="LEAD_NOT_FOUND")
+
+        return BitrixLead.model_validate(result)
+
+    async def crm_lead_list(
+        self,
+        *,
+        filter: dict[str, Any] | None = None,
+        order: dict[str, str] | None = None,
+        select: list[str] | None = None,
+        start: int = 0,
+    ) -> dict[str, Any]:
+        """Get a list of CRM leads (crm.lead.list).
+
+        Args:
+            filter: Lead filter object
+            order: Sort object (field -> ASC/DESC)
+            select: List of fields to return
+            start: Pagination offset (0, 50, 100, ...)
+
+        Returns:
+            Dict with `items` (lead rows), `total` (optional), and `next` (optional).
+
+        Raises:
+            BitrixAPIError: If response format is unexpected
+        """
+        params: dict[str, Any] = {
+            "filter": filter or {},
+            "order": order or {},
+            "select": select or ["*", "UF_*"],
+            "start": start,
+        }
+
+        data = await self._request_raw("crm.lead.list", params)
+        result = data.get("result")
+        if not isinstance(result, list):
+            raise BitrixAPIError(
+                "Unexpected response format from crm.lead.list",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        items: list[dict[str, Any]] = []
+        for item in result:
+            if not isinstance(item, dict):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.lead.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+            items.append(item)
+
+        total_raw = data.get("total")
+        total: int | None = None
+        if total_raw is not None:
+            try:
+                total = int(total_raw)
+            except (TypeError, ValueError):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.lead.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+
+        next_raw = data.get("next")
+        next_start: int | None = None
+        if next_raw is not None:
+            try:
+                next_start = int(next_raw)
+            except (TypeError, ValueError):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.lead.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+
+        return {"items": items, "total": total, "next": next_start}
+
+    async def crm_lead_productrows_get(self, lead_id: int) -> list[dict[str, Any]]:
+        """Get product rows attached to a CRM lead (crm.lead.productrows.get).
+
+        Args:
+            lead_id: Lead ID
+
+        Returns:
+            List of product row objects.
+
+        Raises:
+            BitrixAPIError: If response format is unexpected
+        """
+        result = await self._request("crm.lead.productrows.get", {"id": lead_id})
+
+        if not isinstance(result, list):
+            raise BitrixAPIError(
+                "Unexpected response format from crm.lead.productrows.get",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        product_rows: list[dict[str, Any]] = []
+        for row in result:
+            if not isinstance(row, dict):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.lead.productrows.get",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+            product_rows.append(row)
+
+        return product_rows
+
+    async def crm_lead_add(
+        self,
+        *,
+        fields: dict[str, Any],
+        params: dict[str, Any] | None = None,
+    ) -> int:
+        """Create a CRM lead (crm.lead.add).
+
+        Args:
+            fields: Lead fields payload
+            params: Optional Bitrix24 params payload
+
+        Returns:
+            Created lead ID.
+
+        Raises:
+            ValueError: If fields payload is empty
+            BitrixAPIError: If response format is unexpected
+        """
+        if not fields:
+            raise ValueError("Lead fields must not be empty.")
+
+        payload: dict[str, Any] = {"fields": fields}
+        if params is not None:
+            payload["params"] = params
+
+        result = await self._request("crm.lead.add", payload)
+
+        if isinstance(result, (int, str)):
+            return int(result)
+
+        if isinstance(result, dict):
+            lead_id = result.get("ID") or result.get("id") or result.get("leadId")
+            if lead_id is not None:
+                return int(lead_id)
+
+        raise BitrixAPIError(
+            "Unexpected response format from crm.lead.add",
+            error_code="UNEXPECTED_RESPONSE",
+        )
+
+    async def crm_lead_update(
+        self,
+        *,
+        lead_id: int,
+        fields: dict[str, Any],
+        params: dict[str, Any] | None = None,
+    ) -> bool:
+        """Update a CRM lead (crm.lead.update).
+
+        Args:
+            lead_id: Lead ID
+            fields: Lead fields payload
+            params: Optional Bitrix24 params payload
+
+        Returns:
+            True when update is successful, else False.
+
+        Raises:
+            ValueError: If fields payload is empty
+            BitrixAPIError: If response format is unexpected
+        """
+        if not fields:
+            raise ValueError("Lead fields must not be empty.")
+
+        payload: dict[str, Any] = {"id": lead_id, "fields": fields}
+        if params is not None:
+            payload["params"] = params
+
+        result = await self._request("crm.lead.update", payload)
+
+        if isinstance(result, bool):
+            return result
+        if isinstance(result, (int, str)):
+            return str(result).strip().lower() in {"1", "true", "yes"}
+
+        raise BitrixAPIError(
+            "Unexpected response format from crm.lead.update",
+            error_code="UNEXPECTED_RESPONSE",
+        )
+
+    async def crm_lead_delete(self, lead_id: int) -> bool:
+        """Delete a CRM lead (crm.lead.delete).
+
+        Args:
+            lead_id: Lead ID
+
+        Returns:
+            True when delete is successful, else False.
+
+        Raises:
+            BitrixAPIError: If response format is unexpected
+        """
+        result = await self._request("crm.lead.delete", {"id": lead_id})
+
+        if isinstance(result, bool):
+            return result
+        if isinstance(result, (int, str)):
+            return str(result).strip().lower() in {"1", "true", "yes"}
+
+        raise BitrixAPIError(
+            "Unexpected response format from crm.lead.delete",
+            error_code="UNEXPECTED_RESPONSE",
+        )
 
     async def crm_deal_fields(self) -> dict[str, Any]:
         """Get available CRM deal fields (crm.deal.fields).
@@ -695,6 +1032,34 @@ class Bitrix24Client:
             )
 
         return [BitrixScrumKanbanStage.model_validate(item) for item in result]
+
+    async def scrum_backlog_get(self, group_id: int) -> BitrixScrumBacklog:
+        """Get Scrum backlog metadata for a group (tasks.api.scrum.backlog.get).
+
+        Args:
+            group_id: Scrum group (workgroup/project) ID.
+
+        Returns:
+            BitrixScrumBacklog object.
+
+        Raises:
+            BitrixAPIError: If the response format is unexpected.
+        """
+        result = await self._request("tasks.api.scrum.backlog.get", {"id": group_id})
+
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.api.scrum.backlog.get",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        try:
+            return BitrixScrumBacklog.model_validate(result)
+        except ValidationError as e:
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.api.scrum.backlog.get",
+                error_code="UNEXPECTED_RESPONSE",
+            ) from e
 
     async def scrum_epic_list(
         self,

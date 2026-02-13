@@ -128,6 +128,183 @@ async def _task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _crm_lead_get(id: int) -> dict[str, Any]:
+    """Get detailed CRM lead information by ID.
+
+    Args:
+        id: Lead ID
+
+    Returns:
+        Lead details from crm.lead.get, including dynamic user fields.
+    """
+    client = get_client()
+
+    try:
+        lead = await client.crm_lead_get(lead_id=id)
+        return lead.to_result()
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM lead get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM lead get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _crm_lead_list(
+    filter: dict[str, Any] | None = None,
+    order: dict[str, str] | None = None,
+    select: list[str] | None = None,
+    start: int = 0,
+) -> dict[str, Any]:
+    """Get CRM leads list with pagination metadata (crm.lead.list).
+
+    Args:
+        filter: Lead filter object
+        order: Sort object (field -> ASC/DESC)
+        select: List of fields to return
+        start: Pagination offset (0, 50, 100, ...)
+
+    Returns:
+        Object with items, total, next, hasMore, and current start.
+    """
+    client = get_client()
+
+    try:
+        page = await client.crm_lead_list(
+            filter=filter,
+            order=order,
+            select=select,
+            start=start,
+        )
+        next_start = page.get("next")
+        return {
+            "items": page.get("items", []),
+            "total": page.get("total"),
+            "next": next_start,
+            "hasMore": next_start is not None,
+            "start": start,
+        }
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM lead list: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM lead list: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _crm_lead_productrows_get(id: int) -> dict[str, Any]:
+    """Get products attached to a CRM lead (crm.lead.productrows.get).
+
+    Args:
+        id: Lead ID
+
+    Returns:
+        Object containing lead id and product rows.
+    """
+    client = get_client()
+
+    try:
+        rows = await client.crm_lead_productrows_get(lead_id=id)
+        return {
+            "id": id,
+            "rows": rows,
+        }
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM lead product rows get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM lead product rows get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _crm_lead_add(
+    fields: dict[str, Any],
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a CRM lead (crm.lead.add).
+
+    Args:
+        fields: Lead fields payload
+        params: Optional Bitrix24 params payload
+
+    Returns:
+        Object containing id and created flag.
+    """
+    if not fields:
+        raise RuntimeError("Lead fields must not be empty.")
+
+    client = get_client()
+
+    try:
+        lead_id = await client.crm_lead_add(fields=fields, params=params)
+        return {"id": lead_id, "created": True}
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM lead add: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM lead add: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _crm_lead_update(
+    id: int,
+    fields: dict[str, Any],
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Update a CRM lead (crm.lead.update).
+
+    Args:
+        id: Lead ID
+        fields: Lead fields payload
+        params: Optional Bitrix24 params payload
+
+    Returns:
+        Object containing id and updated flag.
+    """
+    if not fields:
+        raise RuntimeError("Lead fields must not be empty.")
+
+    client = get_client()
+
+    try:
+        updated = await client.crm_lead_update(lead_id=id, fields=fields, params=params)
+        return {"id": id, "updated": updated}
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM lead update: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM lead update: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _crm_lead_delete(id: int) -> dict[str, Any]:
+    """Delete a CRM lead (crm.lead.delete).
+
+    Args:
+        id: Lead ID
+
+    Returns:
+        Object containing id and deleted flag.
+    """
+    client = get_client()
+
+    try:
+        deleted = await client.crm_lead_delete(lead_id=id)
+        return {"id": id, "deleted": deleted}
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM lead delete: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM lead delete: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _crm_deal_get(id: int) -> dict[str, Any]:
     """Get detailed CRM deal information by ID.
 
@@ -753,6 +930,60 @@ async def _task_stages_move_task(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _scrum_backlog_tasks(
+    groupId: int,
+    query: str | None = None,
+    status: str | None = None,
+    responsibleId: int | None = None,
+) -> dict[str, Any]:
+    """Return all tasks currently in a Scrum group's backlog.
+
+    Flow:
+    1) Resolve backlog metadata via tasks.api.scrum.backlog.get
+    2) Build list filters using GROUP_ID + BACKLOG_ID (+ optional filters)
+    3) List tasks with pagination
+    4) Normalize each task card to search-result format
+    """
+    client = get_client()
+    base_url = client.get_base_url()
+
+    try:
+        backlog = await client.scrum_backlog_get(group_id=groupId)
+
+        task_filter: dict[str, Any] = {"GROUP_ID": groupId, "BACKLOG_ID": backlog.id}
+        if query:
+            task_filter["%TITLE"] = query
+        if status is not None:
+            try:
+                task_filter["STATUS"] = _map_status_to_code(status)
+            except ValueError as e:
+                raise RuntimeError(
+                    f"{e}. Use one of: pending, in_progress, supposedly_completed, "
+                    "completed, deferred."
+                ) from e
+        if responsibleId is not None:
+            task_filter["RESPONSIBLE_ID"] = responsibleId
+
+        tasks = await client.task_list_all_pages(
+            filter=task_filter,
+            limit=50,
+        )
+
+        cards = [task.to_search_result(base_url=base_url) for task in tasks]
+        return {
+            "groupId": groupId,
+            "backlogId": backlog.id,
+            "count": len(cards),
+            "tasks": cards,
+        }
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during scrum backlog tasks: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during scrum backlog tasks: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 def _normalize_text(value: str) -> str:
     """Normalize user-provided free-text for matching."""
     return value.strip().lower()
@@ -1201,6 +1432,59 @@ async def task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
 
 
 @mcp.tool
+async def crm_lead_get(id: int) -> dict[str, Any]:
+    """Get CRM lead details by ID (crm.lead.get), including dynamic user fields."""
+    return await _crm_lead_get(id=id)
+
+
+@mcp.tool
+async def crm_lead_list(
+    filter: dict[str, Any] | None = None,
+    order: dict[str, str] | None = None,
+    select: list[str] | None = None,
+    start: int = 0,
+) -> dict[str, Any]:
+    """Get CRM leads list (crm.lead.list) with paging."""
+    return await _crm_lead_list(
+        filter=filter,
+        order=order,
+        select=select,
+        start=start,
+    )
+
+
+@mcp.tool
+async def crm_lead_productrows_get(id: int) -> dict[str, Any]:
+    """Get products attached to a lead (crm.lead.productrows.get)."""
+    return await _crm_lead_productrows_get(id=id)
+
+
+@mcp.tool
+async def crm_lead_add(
+    fields: dict[str, Any],
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a CRM lead (crm.lead.add)."""
+    return await _crm_lead_add(fields=fields, params=params)
+
+
+@mcp.tool
+async def crm_lead_update(
+    id: int,
+    fields: dict[str, Any],
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Update a CRM lead (crm.lead.update)."""
+    return await _crm_lead_update(id=id, fields=fields, params=params)
+
+
+@mcp.tool
+async def crm_lead_delete(id: int) -> dict[str, Any]:
+    """Delete a CRM lead (crm.lead.delete)."""
+    return await _crm_lead_delete(id=id)
+
+
+@mcp.tool
 async def crm_deal_get(id: int) -> dict[str, Any]:
     """Get CRM deal details by ID (crm.deal.get), including dynamic user fields."""
     return await _crm_deal_get(id=id)
@@ -1340,6 +1624,27 @@ async def scrum_epic_list(
     Use this to find an epic by name and obtain its id (epicId) for other Scrum operations.
     """
     return await _scrum_epic_list(groupId=groupId, query=query, limit=limit)
+
+
+@mcp.tool
+async def scrum_backlog_tasks(
+    groupId: int,
+    query: str | None = None,
+    status: str | None = None,
+    responsibleId: int | None = None,
+) -> dict[str, Any]:
+    """Return all tasks currently in the backlog for a Scrum group.
+
+    Internally resolves backlog metadata via tasks.api.scrum.backlog.get, then fetches all
+    backlog tasks via paginated tasks.task.list calls filtered by GROUP_ID, BACKLOG_ID,
+    and optional query/status/responsible filters.
+    """
+    return await _scrum_backlog_tasks(
+        groupId=groupId,
+        query=query,
+        status=status,
+        responsibleId=responsibleId,
+    )
 
 
 @mcp.tool

@@ -250,6 +250,116 @@ def sample_crm_deal_delete_response() -> dict:
 
 
 @pytest.fixture
+def sample_crm_lead_get_response() -> dict:
+    """Return sample response for crm.lead.get API."""
+    return {
+        "result": {
+            "ID": "610",
+            "TITLE": "Lead from Website",
+            "STATUS_ID": "NEW",
+            "OPENED": "Y",
+            "ASSIGNED_BY_ID": "1",
+            "COMPANY_ID": "9",
+            "CONTACT_ID": "84",
+            "SOURCE_ID": "WEB",
+            "SOURCE_DESCRIPTION": "Website form",
+            "COMMENTS": "Interested in annual plan",
+            "OPPORTUNITY": "1200.00",
+            "CURRENCY_ID": "USD",
+            "ADDRESS": "123 Market St",
+            "ADDRESS_CITY": "San Francisco",
+            "ADDRESS_REGION": "CA",
+            "ADDRESS_PROVINCE": "California",
+            "ADDRESS_COUNTRY": "USA",
+            "ADDRESS_POSTAL_CODE": "94103",
+            "DATE_CREATE": "2024-09-01T11:20:00+02:00",
+            "DATE_MODIFY": "2024-09-01T11:45:00+02:00",
+            "CREATED_BY_ID": "1",
+            "MODIFY_BY_ID": "1",
+            "MOVED_BY_ID": "1",
+            "MOVED_TIME": "2024-09-01T11:45:00+02:00",
+            "UF_CRM_1721244482250": "Custom value",
+            "IS_RETURN_CUSTOMER": "N",
+        }
+    }
+
+
+@pytest.fixture
+def sample_crm_lead_list_response() -> dict:
+    """Return sample response for crm.lead.list API."""
+    return {
+        "result": [
+            {
+                "ID": "610",
+                "TITLE": "Lead from Website",
+                "STATUS_ID": "NEW",
+                "ASSIGNED_BY_ID": "1",
+                "CONTACT_ID": "84",
+                "DATE_CREATE": "2024-09-01T11:20:00+02:00",
+                "UF_CRM_1721244482250": "Custom value",
+            },
+            {
+                "ID": "611",
+                "TITLE": "Inbound Call Lead",
+                "STATUS_ID": "IN_PROCESS",
+                "ASSIGNED_BY_ID": "6",
+                "CONTACT_ID": "85",
+                "DATE_CREATE": "2024-09-01T12:00:00+02:00",
+            },
+        ],
+        "total": 95,
+        "next": 50,
+    }
+
+
+@pytest.fixture
+def sample_crm_lead_productrows_get_response() -> dict:
+    """Return sample response for crm.lead.productrows.get API."""
+    return {
+        "result": [
+            {
+                "ID": "901",
+                "PRODUCT_ID": "101",
+                "PRODUCT_NAME": "Starter Plan",
+                "PRICE": "99.00",
+                "QUANTITY": "1",
+                "DISCOUNT_SUM": "0.00",
+                "TAX_RATE": "0.00",
+                "CURRENCY": "USD",
+            },
+            {
+                "ID": "902",
+                "PRODUCT_ID": "102",
+                "PRODUCT_NAME": "Onboarding Package",
+                "PRICE": "250.00",
+                "QUANTITY": "1",
+                "DISCOUNT_SUM": "25.00",
+                "TAX_RATE": "0.00",
+                "CURRENCY": "USD",
+            },
+        ]
+    }
+
+
+@pytest.fixture
+def sample_crm_lead_add_response() -> dict:
+    """Return sample response for crm.lead.add API."""
+    return {"result": 612}
+
+
+@pytest.fixture
+def sample_crm_lead_update_response() -> dict:
+    """Return sample response for crm.lead.update API."""
+    return {"result": True}
+
+
+@pytest.fixture
+def sample_crm_lead_delete_response() -> dict:
+    """Return sample response for crm.lead.delete API."""
+    return {"result": True}
+
+
+@pytest.fixture
 def sample_task_comment_list_response() -> dict:
     """Return sample response for task.commentitem.getlist API."""
     return {
@@ -302,6 +412,60 @@ def sample_task_add_response() -> dict:
                 "id": 457,
             }
         }
+    }
+
+
+@pytest.fixture
+def sample_scrum_backlog_get_response() -> dict:
+    """Return sample response for tasks.api.scrum.backlog.get API."""
+    return {
+        "result": {
+            "id": 91,
+            "groupId": 205,
+            "createdBy": 1665,
+            "modifiedBy": 1665,
+        }
+    }
+
+
+@pytest.fixture
+def sample_task_list_backlog_page_1_response() -> dict:
+    """Return first page for backlog-filtered tasks.task.list."""
+    return {
+        "result": {
+            "tasks": [
+                {
+                    "id": "456",
+                    "title": "Auto Send welcome email",
+                    "responsibleId": "7",
+                    "groupId": "205",
+                    "status": "2",
+                    "parentId": None,
+                }
+            ]
+        },
+        "total": 2,
+        "next": 50,
+    }
+
+
+@pytest.fixture
+def sample_task_list_backlog_page_2_response() -> dict:
+    """Return second (final) page for backlog-filtered tasks.task.list."""
+    return {
+        "result": {
+            "tasks": [
+                {
+                    "id": "789",
+                    "title": "Welcome email template",
+                    "responsibleId": "7",
+                    "groupId": "205",
+                    "status": "3",
+                    "parentId": None,
+                }
+            ]
+        },
+        "total": 2,
     }
 
 
