@@ -613,6 +613,52 @@ class TestCrmLeadUpdate:
                 await client.crm_lead_update(lead_id=610, fields={"TITLE": "Updated"})
 
 
+class TestCrmLeadDelete:
+    """Tests for crm_lead_delete method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_delete_success(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_delete should return delete status."""
+        mock_bitrix_api.post("crm.lead.delete").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            deleted = await client.crm_lead_delete(lead_id=610)
+
+        assert deleted is True
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_delete_sends_id_payload(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_delete should send id payload."""
+        mock_bitrix_api.post("crm.lead.delete").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_lead_delete(lead_id=610)
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 610
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_delete_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_delete should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.lead.delete").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Lead not found"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Lead not found"):
+                await client.crm_lead_delete(lead_id=99999)
+
+
 class TestCrmDealGet:
     """Tests for crm_deal_get method."""
 

@@ -281,6 +281,30 @@ async def _crm_lead_update(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _crm_lead_delete(id: int) -> dict[str, Any]:
+    """Delete a CRM lead (crm.lead.delete).
+
+    Args:
+        id: Lead ID
+
+    Returns:
+        Object containing id and deleted flag.
+    """
+    client = get_client()
+
+    try:
+        deleted = await client.crm_lead_delete(lead_id=id)
+        return {"id": id, "deleted": deleted}
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM lead delete: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM lead delete: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _crm_deal_get(id: int) -> dict[str, Any]:
     """Get detailed CRM deal information by ID.
 
@@ -1398,6 +1422,12 @@ async def crm_lead_update(
 ) -> dict[str, Any]:
     """Update a CRM lead (crm.lead.update)."""
     return await _crm_lead_update(id=id, fields=fields, params=params)
+
+
+@mcp.tool
+async def crm_lead_delete(id: int) -> dict[str, Any]:
+    """Delete a CRM lead (crm.lead.delete)."""
+    return await _crm_lead_delete(id=id)
 
 
 @mcp.tool

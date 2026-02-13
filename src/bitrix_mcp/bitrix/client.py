@@ -497,6 +497,30 @@ class Bitrix24Client:
             error_code="UNEXPECTED_RESPONSE",
         )
 
+    async def crm_lead_delete(self, lead_id: int) -> bool:
+        """Delete a CRM lead (crm.lead.delete).
+
+        Args:
+            lead_id: Lead ID
+
+        Returns:
+            True when delete is successful, else False.
+
+        Raises:
+            BitrixAPIError: If response format is unexpected
+        """
+        result = await self._request("crm.lead.delete", {"id": lead_id})
+
+        if isinstance(result, bool):
+            return result
+        if isinstance(result, (int, str)):
+            return str(result).strip().lower() in {"1", "true", "yes"}
+
+        raise BitrixAPIError(
+            "Unexpected response format from crm.lead.delete",
+            error_code="UNEXPECTED_RESPONSE",
+        )
+
     async def crm_deal_fields(self) -> dict[str, Any]:
         """Get available CRM deal fields (crm.deal.fields).
 
