@@ -6,7 +6,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), list deal fields, list CRM deals, fetch CRM deal details by ID, create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), and manage Kanban/My Planner columns (get stages, move/reorder tasks).
+Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), list deal fields and deals, fetch deal details and product rows, add/update/delete deals, create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), and manage Kanban/My Planner columns (get stages, move/reorder tasks).
 
 ---
 
@@ -39,6 +39,7 @@ Bitrix24 MCP provides tools for AI-assisted task planning:
 - Search tasks by title with partial matching.
 - Get full task details including description for AI analysis.
 - Create subtasks under parent tasks automatically.
+- Manage CRM deals (list/get/products/add/update/delete).
 - Built-in rate limiting (respects Bitrix24's 2 req/sec limit).
 - Secure authentication via Bitrix24 inbound webhooks.
 
@@ -172,6 +173,43 @@ Note: Bitrix24 keeps this method operational but recommends `crm.item.list` for 
 | `contactId` | int | No | Shortcut for primary-contact filtering (`CONTACT_ID`) |
 
 `crm.deal.list` does not support `CONTACT_IDS` (multi-contact filtering). For that, use `crm.item.list` or `crm.deal.contact.items.*`.
+
+### crm_deal_productrows_get
+
+Get products attached to a deal (via `crm.deal.productrows.get`).
+Returns `dealId`, `items`, and `count`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Deal ID |
+
+### crm_deal_add
+
+Create a CRM deal (via `crm.deal.add`).
+Returns `id` and `created`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `fields` | object | Yes | Deal fields payload (must be non-empty) |
+
+### crm_deal_update
+
+Update a CRM deal (via `crm.deal.update`).
+Returns `id` and `updated`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Deal ID (must be > 0) |
+| `fields` | object | Yes | Deal fields payload (must be non-empty) |
+
+### crm_deal_delete
+
+Delete a CRM deal (via `crm.deal.delete`).
+Returns `id` and `deleted`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Deal ID (must be > 0) |
 
 ### task_comment_add
 

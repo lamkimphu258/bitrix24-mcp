@@ -9,10 +9,13 @@ from httpx import Response
 
 from bitrix_mcp.bitrix.client import Bitrix24Client
 from bitrix_mcp.server import (
+    _crm_deal_add,
+    _crm_deal_delete,
     _crm_deal_fields,
     _crm_deal_get,
     _crm_deal_list,
     _crm_deal_productrows_get,
+    _crm_deal_update,
     _task_create,
     _task_get,
     _task_search,
@@ -397,3 +400,56 @@ class TestCrmWorkflow:
         assert products["items"][1]["PRODUCT_NAME"] == "Onboarding Package"
 
         assert mock_api.calls.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_deal_lifecycle_add_products_update_delete(
+        self,
+        setup_integration,
+        sample_crm_deal_productrows_get_response,
+        sample_crm_deal_add_response,
+        sample_crm_deal_update_response,
+        sample_crm_deal_delete_response,
+    ):
+        """User can run deal lifecycle: add -> check products -> update -> delete."""
+        mock_api = setup_integration
+
+        mock_api.post("crm.deal.add").mock(
+            return_value=Response(200, json=sample_crm_deal_add_response)
+        )
+
+        created = await _crm_deal_add(
+            fields={
+                "TITLE": "Lifecycle Deal",
+                "STAGE_ID": "NEW",
+                "OPPORTUNITY": "1000.00",
+                "CURRENCY_ID": "USD",
+            }
+        )
+        assert created == {"id": 512, "created": True}
+
+        mock_api.post("crm.deal.productrows.get").mock(
+            return_value=Response(200, json=sample_crm_deal_productrows_get_response)
+        )
+
+        products = await _crm_deal_productrows_get(id=created["id"])
+        assert products["dealId"] == 512
+        assert products["count"] == 2
+
+        mock_api.post("crm.deal.update").mock(
+            return_value=Response(200, json=sample_crm_deal_update_response)
+        )
+
+        updated = await _crm_deal_update(
+            id=created["id"],
+            fields={"TITLE": "Lifecycle Deal Updated", "STAGE_ID": "PREPAYMENT_INVOICE"},
+        )
+        assert updated == {"id": 512, "updated": True}
+
+        mock_api.post("crm.deal.delete").mock(
+            return_value=Response(200, json=sample_crm_deal_delete_response)
+        )
+
+        deleted = await _crm_deal_delete(id=created["id"])
+        assert deleted == {"id": 512, "deleted": True}
+
+        assert mock_api.calls.call_count == 4
