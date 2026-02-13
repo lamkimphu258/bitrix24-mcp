@@ -305,24 +305,13 @@ class TestCrmLeadGet:
     """Tests for crm_lead_get tool."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_get_basic(self, setup_client, mock_bitrix_api):
+    async def test_crm_lead_get_basic(
+        self, setup_client, sample_crm_lead_get_response, mock_bitrix_api
+    ):
         """crm_lead_get should return normalized lead details."""
-        response = {
-            "result": {
-                "ID": "610",
-                "TITLE": "Lead from Website",
-                "STATUS_ID": "NEW",
-                "OPENED": "Y",
-                "ASSIGNED_BY_ID": "1",
-                "COMPANY_ID": "9",
-                "CONTACT_ID": "84",
-                "SOURCE_ID": "WEB",
-                "COMMENTS": "Interested in annual plan",
-                "UF_CRM_1721244482250": "Custom value",
-                "IS_RETURN_CUSTOMER": "N",
-            }
-        }
-        mock_bitrix_api.post("crm.lead.get").mock(return_value=Response(200, json=response))
+        mock_bitrix_api.post("crm.lead.get").mock(
+            return_value=Response(200, json=sample_crm_lead_get_response)
+        )
 
         result = await _crm_lead_get(id=610)
 
@@ -367,27 +356,13 @@ class TestCrmLeadList:
     """Tests for crm_lead_list tool."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_list_basic(self, setup_client, mock_bitrix_api):
+    async def test_crm_lead_list_basic(
+        self, setup_client, sample_crm_lead_list_response, mock_bitrix_api
+    ):
         """crm_lead_list should return lead rows with pagination metadata."""
-        response = {
-            "result": [
-                {
-                    "ID": "610",
-                    "TITLE": "Lead from Website",
-                    "STATUS_ID": "NEW",
-                    "CONTACT_ID": "84",
-                },
-                {
-                    "ID": "611",
-                    "TITLE": "Inbound Call Lead",
-                    "STATUS_ID": "IN_PROCESS",
-                    "CONTACT_ID": "85",
-                },
-            ],
-            "total": 95,
-            "next": 50,
-        }
-        mock_bitrix_api.post("crm.lead.list").mock(return_value=Response(200, json=response))
+        mock_bitrix_api.post("crm.lead.list").mock(
+            return_value=Response(200, json=sample_crm_lead_list_response)
+        )
 
         result = await _crm_lead_list(
             filter={"STATUS_ID": "NEW"},
@@ -454,28 +429,12 @@ class TestCrmLeadProductRowsGet:
     """Tests for crm_lead_productrows_get tool."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_productrows_get_basic(self, setup_client, mock_bitrix_api):
+    async def test_crm_lead_productrows_get_basic(
+        self, setup_client, sample_crm_lead_productrows_get_response, mock_bitrix_api
+    ):
         """crm_lead_productrows_get should return id/rows."""
-        response = {
-            "result": [
-                {
-                    "ID": "901",
-                    "PRODUCT_ID": "101",
-                    "PRODUCT_NAME": "Starter Plan",
-                    "PRICE": "99.00",
-                    "QUANTITY": "1",
-                },
-                {
-                    "ID": "902",
-                    "PRODUCT_ID": "102",
-                    "PRODUCT_NAME": "Onboarding Package",
-                    "PRICE": "250.00",
-                    "QUANTITY": "1",
-                },
-            ]
-        }
         mock_bitrix_api.post("crm.lead.productrows.get").mock(
-            return_value=Response(200, json=response)
+            return_value=Response(200, json=sample_crm_lead_productrows_get_response)
         )
 
         result = await _crm_lead_productrows_get(id=610)
@@ -522,9 +481,13 @@ class TestCrmLeadAdd:
     """Tests for crm_lead_add tool."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_add_basic(self, setup_client, mock_bitrix_api):
+    async def test_crm_lead_add_basic(
+        self, setup_client, sample_crm_lead_add_response, mock_bitrix_api
+    ):
         """crm_lead_add should return id and created flag."""
-        mock_bitrix_api.post("crm.lead.add").mock(return_value=Response(200, json={"result": 612}))
+        mock_bitrix_api.post("crm.lead.add").mock(
+            return_value=Response(200, json=sample_crm_lead_add_response)
+        )
 
         fields = {
             "TITLE": "Lead from Website",
@@ -581,10 +544,12 @@ class TestCrmLeadUpdate:
     """Tests for crm_lead_update tool."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_update_basic(self, setup_client, mock_bitrix_api):
+    async def test_crm_lead_update_basic(
+        self, setup_client, sample_crm_lead_update_response, mock_bitrix_api
+    ):
         """crm_lead_update should return id and updated flag."""
         mock_bitrix_api.post("crm.lead.update").mock(
-            return_value=Response(200, json={"result": True})
+            return_value=Response(200, json=sample_crm_lead_update_response)
         )
 
         fields = {"TITLE": "Updated Lead Title", "STATUS_ID": "IN_PROCESS"}
@@ -638,10 +603,12 @@ class TestCrmLeadDelete:
     """Tests for crm_lead_delete tool."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_delete_basic(self, setup_client, mock_bitrix_api):
+    async def test_crm_lead_delete_basic(
+        self, setup_client, sample_crm_lead_delete_response, mock_bitrix_api
+    ):
         """crm_lead_delete should return id and deleted flag."""
         mock_bitrix_api.post("crm.lead.delete").mock(
-            return_value=Response(200, json={"result": True})
+            return_value=Response(200, json=sample_crm_lead_delete_response)
         )
 
         result = await _crm_lead_delete(id=610)

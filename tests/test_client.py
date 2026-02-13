@@ -193,24 +193,13 @@ class TestCrmLeadGet:
     """Tests for crm_lead_get method."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_get_success(self, mock_webhook_url, mock_bitrix_api):
+    async def test_crm_lead_get_success(
+        self, mock_webhook_url, sample_crm_lead_get_response, mock_bitrix_api
+    ):
         """crm_lead_get should return parsed lead details."""
-        response = {
-            "result": {
-                "ID": "610",
-                "TITLE": "Lead from Website",
-                "STATUS_ID": "NEW",
-                "OPENED": "Y",
-                "ASSIGNED_BY_ID": "1",
-                "COMPANY_ID": "9",
-                "CONTACT_ID": "84",
-                "SOURCE_ID": "WEB",
-                "COMMENTS": "Interested in annual plan",
-                "UF_CRM_1721244482250": "Custom value",
-                "IS_RETURN_CUSTOMER": "N",
-            }
-        }
-        mock_bitrix_api.post("crm.lead.get").mock(return_value=Response(200, json=response))
+        mock_bitrix_api.post("crm.lead.get").mock(
+            return_value=Response(200, json=sample_crm_lead_get_response)
+        )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
             lead = await client.crm_lead_get(lead_id=610)
@@ -224,10 +213,12 @@ class TestCrmLeadGet:
         assert lead.model_extra.get("IS_RETURN_CUSTOMER") == "N"
 
     @pytest.mark.asyncio
-    async def test_crm_lead_get_sends_id_param(self, mock_webhook_url, mock_bitrix_api):
+    async def test_crm_lead_get_sends_id_param(
+        self, mock_webhook_url, sample_crm_lead_get_response, mock_bitrix_api
+    ):
         """crm_lead_get should send correct id payload."""
         mock_bitrix_api.post("crm.lead.get").mock(
-            return_value=Response(200, json={"result": {"ID": "610", "TITLE": "Lead"}})
+            return_value=Response(200, json=sample_crm_lead_get_response)
         )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
@@ -278,30 +269,13 @@ class TestCrmLeadList:
     """Tests for crm_lead_list method."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_list_success(self, mock_webhook_url, mock_bitrix_api):
+    async def test_crm_lead_list_success(
+        self, mock_webhook_url, sample_crm_lead_list_response, mock_bitrix_api
+    ):
         """crm_lead_list should return leads and pagination metadata."""
-        response = {
-            "result": [
-                {
-                    "ID": "610",
-                    "TITLE": "Lead from Website",
-                    "STATUS_ID": "NEW",
-                    "ASSIGNED_BY_ID": "1",
-                    "CONTACT_ID": "84",
-                    "UF_CRM_1721244482250": "Custom value",
-                },
-                {
-                    "ID": "611",
-                    "TITLE": "Inbound Call Lead",
-                    "STATUS_ID": "IN_PROCESS",
-                    "ASSIGNED_BY_ID": "6",
-                    "CONTACT_ID": "85",
-                },
-            ],
-            "total": 95,
-            "next": 50,
-        }
-        mock_bitrix_api.post("crm.lead.list").mock(return_value=Response(200, json=response))
+        mock_bitrix_api.post("crm.lead.list").mock(
+            return_value=Response(200, json=sample_crm_lead_list_response)
+        )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
             result = await client.crm_lead_list(
@@ -318,10 +292,12 @@ class TestCrmLeadList:
         assert result["next"] == 50
 
     @pytest.mark.asyncio
-    async def test_crm_lead_list_sends_payload(self, mock_webhook_url, mock_bitrix_api):
+    async def test_crm_lead_list_sends_payload(
+        self, mock_webhook_url, sample_crm_lead_list_response, mock_bitrix_api
+    ):
         """crm_lead_list should send filter/order/select/start payload."""
         mock_bitrix_api.post("crm.lead.list").mock(
-            return_value=Response(200, json={"result": [], "total": 0})
+            return_value=Response(200, json=sample_crm_lead_list_response)
         )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
@@ -388,28 +364,12 @@ class TestCrmLeadProductRowsGet:
     """Tests for crm_lead_productrows_get method."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_productrows_get_success(self, mock_webhook_url, mock_bitrix_api):
+    async def test_crm_lead_productrows_get_success(
+        self, mock_webhook_url, sample_crm_lead_productrows_get_response, mock_bitrix_api
+    ):
         """crm_lead_productrows_get should return product row list."""
-        response = {
-            "result": [
-                {
-                    "ID": "901",
-                    "PRODUCT_ID": "101",
-                    "PRODUCT_NAME": "Starter Plan",
-                    "PRICE": "99.00",
-                    "QUANTITY": "1",
-                },
-                {
-                    "ID": "902",
-                    "PRODUCT_ID": "102",
-                    "PRODUCT_NAME": "Onboarding Package",
-                    "PRICE": "250.00",
-                    "QUANTITY": "1",
-                },
-            ]
-        }
         mock_bitrix_api.post("crm.lead.productrows.get").mock(
-            return_value=Response(200, json=response)
+            return_value=Response(200, json=sample_crm_lead_productrows_get_response)
         )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
@@ -420,10 +380,12 @@ class TestCrmLeadProductRowsGet:
         assert rows[1]["PRODUCT_NAME"] == "Onboarding Package"
 
     @pytest.mark.asyncio
-    async def test_crm_lead_productrows_get_sends_id_param(self, mock_webhook_url, mock_bitrix_api):
+    async def test_crm_lead_productrows_get_sends_id_param(
+        self, mock_webhook_url, sample_crm_lead_productrows_get_response, mock_bitrix_api
+    ):
         """crm_lead_productrows_get should send correct id payload."""
         mock_bitrix_api.post("crm.lead.productrows.get").mock(
-            return_value=Response(200, json={"result": []})
+            return_value=Response(200, json=sample_crm_lead_productrows_get_response)
         )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
@@ -479,9 +441,13 @@ class TestCrmLeadAdd:
     """Tests for crm_lead_add method."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_add_success(self, mock_webhook_url, mock_bitrix_api):
+    async def test_crm_lead_add_success(
+        self, mock_webhook_url, sample_crm_lead_add_response, mock_bitrix_api
+    ):
         """crm_lead_add should return created lead ID."""
-        mock_bitrix_api.post("crm.lead.add").mock(return_value=Response(200, json={"result": 612}))
+        mock_bitrix_api.post("crm.lead.add").mock(
+            return_value=Response(200, json=sample_crm_lead_add_response)
+        )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
             lead_id = await client.crm_lead_add(fields={"TITLE": "New Lead"})
@@ -490,10 +456,12 @@ class TestCrmLeadAdd:
 
     @pytest.mark.asyncio
     async def test_crm_lead_add_sends_fields_and_params_payload(
-        self, mock_webhook_url, mock_bitrix_api
+        self, mock_webhook_url, sample_crm_lead_add_response, mock_bitrix_api
     ):
         """crm_lead_add should send fields and params payload."""
-        mock_bitrix_api.post("crm.lead.add").mock(return_value=Response(200, json={"result": 612}))
+        mock_bitrix_api.post("crm.lead.add").mock(
+            return_value=Response(200, json=sample_crm_lead_add_response)
+        )
 
         fields = {
             "TITLE": "Lead from Website",
@@ -539,10 +507,12 @@ class TestCrmLeadUpdate:
     """Tests for crm_lead_update method."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_update_success(self, mock_webhook_url, mock_bitrix_api):
+    async def test_crm_lead_update_success(
+        self, mock_webhook_url, sample_crm_lead_update_response, mock_bitrix_api
+    ):
         """crm_lead_update should return update status."""
         mock_bitrix_api.post("crm.lead.update").mock(
-            return_value=Response(200, json={"result": True})
+            return_value=Response(200, json=sample_crm_lead_update_response)
         )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
@@ -554,10 +524,12 @@ class TestCrmLeadUpdate:
         assert updated is True
 
     @pytest.mark.asyncio
-    async def test_crm_lead_update_sends_payload(self, mock_webhook_url, mock_bitrix_api):
+    async def test_crm_lead_update_sends_payload(
+        self, mock_webhook_url, sample_crm_lead_update_response, mock_bitrix_api
+    ):
         """crm_lead_update should send id, fields, and optional params payload."""
         mock_bitrix_api.post("crm.lead.update").mock(
-            return_value=Response(200, json={"result": True})
+            return_value=Response(200, json=sample_crm_lead_update_response)
         )
 
         fields = {
@@ -617,10 +589,12 @@ class TestCrmLeadDelete:
     """Tests for crm_lead_delete method."""
 
     @pytest.mark.asyncio
-    async def test_crm_lead_delete_success(self, mock_webhook_url, mock_bitrix_api):
+    async def test_crm_lead_delete_success(
+        self, mock_webhook_url, sample_crm_lead_delete_response, mock_bitrix_api
+    ):
         """crm_lead_delete should return delete status."""
         mock_bitrix_api.post("crm.lead.delete").mock(
-            return_value=Response(200, json={"result": True})
+            return_value=Response(200, json=sample_crm_lead_delete_response)
         )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
@@ -629,10 +603,12 @@ class TestCrmLeadDelete:
         assert deleted is True
 
     @pytest.mark.asyncio
-    async def test_crm_lead_delete_sends_id_payload(self, mock_webhook_url, mock_bitrix_api):
+    async def test_crm_lead_delete_sends_id_payload(
+        self, mock_webhook_url, sample_crm_lead_delete_response, mock_bitrix_api
+    ):
         """crm_lead_delete should send id payload."""
         mock_bitrix_api.post("crm.lead.delete").mock(
-            return_value=Response(200, json={"result": True})
+            return_value=Response(200, json=sample_crm_lead_delete_response)
         )
 
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
