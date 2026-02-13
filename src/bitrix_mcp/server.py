@@ -150,6 +150,48 @@ async def _crm_lead_get(id: int) -> dict[str, Any]:
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _crm_lead_list(
+    filter: dict[str, Any] | None = None,
+    order: dict[str, str] | None = None,
+    select: list[str] | None = None,
+    start: int = 0,
+) -> dict[str, Any]:
+    """Get CRM leads list with pagination metadata (crm.lead.list).
+
+    Args:
+        filter: Lead filter object
+        order: Sort object (field -> ASC/DESC)
+        select: List of fields to return
+        start: Pagination offset (0, 50, 100, ...)
+
+    Returns:
+        Object with items, total, next, hasMore, and current start.
+    """
+    client = get_client()
+
+    try:
+        page = await client.crm_lead_list(
+            filter=filter,
+            order=order,
+            select=select,
+            start=start,
+        )
+        next_start = page.get("next")
+        return {
+            "items": page.get("items", []),
+            "total": page.get("total"),
+            "next": next_start,
+            "hasMore": next_start is not None,
+            "start": start,
+        }
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM lead list: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM lead list: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _crm_deal_get(id: int) -> dict[str, Any]:
     """Get detailed CRM deal information by ID.
 
@@ -1226,6 +1268,22 @@ async def task_get(id: int, includeComments: bool = False) -> dict[str, Any]:
 async def crm_lead_get(id: int) -> dict[str, Any]:
     """Get CRM lead details by ID (crm.lead.get), including dynamic user fields."""
     return await _crm_lead_get(id=id)
+
+
+@mcp.tool
+async def crm_lead_list(
+    filter: dict[str, Any] | None = None,
+    order: dict[str, str] | None = None,
+    select: list[str] | None = None,
+    start: int = 0,
+) -> dict[str, Any]:
+    """Get CRM leads list (crm.lead.list) with paging."""
+    return await _crm_lead_list(
+        filter=filter,
+        order=order,
+        select=select,
+        start=start,
+    )
 
 
 @mcp.tool

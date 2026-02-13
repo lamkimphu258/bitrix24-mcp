@@ -274,6 +274,116 @@ class TestCrmLeadGet:
                 await client.crm_lead_get(lead_id=610)
 
 
+class TestCrmLeadList:
+    """Tests for crm_lead_list method."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_success(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_list should return leads and pagination metadata."""
+        response = {
+            "result": [
+                {
+                    "ID": "610",
+                    "TITLE": "Lead from Website",
+                    "STATUS_ID": "NEW",
+                    "ASSIGNED_BY_ID": "1",
+                    "CONTACT_ID": "84",
+                    "UF_CRM_1721244482250": "Custom value",
+                },
+                {
+                    "ID": "611",
+                    "TITLE": "Inbound Call Lead",
+                    "STATUS_ID": "IN_PROCESS",
+                    "ASSIGNED_BY_ID": "6",
+                    "CONTACT_ID": "85",
+                },
+            ],
+            "total": 95,
+            "next": 50,
+        }
+        mock_bitrix_api.post("crm.lead.list").mock(return_value=Response(200, json=response))
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.crm_lead_list(
+                filter={"STATUS_ID": "NEW"},
+                order={"DATE_CREATE": "DESC"},
+                select=["ID", "TITLE", "STATUS_ID"],
+                start=0,
+            )
+
+        assert len(result["items"]) == 2
+        assert result["items"][0]["ID"] == "610"
+        assert result["items"][0]["UF_CRM_1721244482250"] == "Custom value"
+        assert result["total"] == 95
+        assert result["next"] == 50
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_sends_payload(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_list should send filter/order/select/start payload."""
+        mock_bitrix_api.post("crm.lead.list").mock(
+            return_value=Response(200, json={"result": [], "total": 0})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            await client.crm_lead_list(
+                filter={"STATUS_ID": "IN_PROCESS"},
+                order={"TITLE": "ASC"},
+                select=["ID", "TITLE", "DATE_CREATE"],
+                start=100,
+            )
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["filter"] == {"STATUS_ID": "IN_PROCESS"}
+        assert body["order"] == {"TITLE": "ASC"}
+        assert body["select"] == ["ID", "TITLE", "DATE_CREATE"]
+        assert body["start"] == 100
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_without_total_or_next(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_list should tolerate missing total/next in response."""
+        mock_bitrix_api.post("crm.lead.list").mock(
+            return_value=Response(
+                200,
+                json={"result": [{"ID": "610", "TITLE": "Lead from Website"}]},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.crm_lead_list()
+
+        assert len(result["items"]) == 1
+        assert result["total"] is None
+        assert result["next"] is None
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_api_error(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_list should raise BitrixAPIError on API errors."""
+        mock_bitrix_api.post("crm.lead.list").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Access denied"},
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Access denied"):
+                await client.crm_lead_list()
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_unexpected_result_raises(self, mock_webhook_url, mock_bitrix_api):
+        """crm_lead_list should raise BitrixAPIError on unexpected result shape."""
+        mock_bitrix_api.post("crm.lead.list").mock(
+            return_value=Response(200, json={"result": {"ID": "610"}})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected response format"):
+                await client.crm_lead_list()
+
+
 class TestCrmDealGet:
     """Tests for crm_deal_get method."""
 

@@ -315,6 +315,76 @@ class Bitrix24Client:
 
         return BitrixLead.model_validate(result)
 
+    async def crm_lead_list(
+        self,
+        *,
+        filter: dict[str, Any] | None = None,
+        order: dict[str, str] | None = None,
+        select: list[str] | None = None,
+        start: int = 0,
+    ) -> dict[str, Any]:
+        """Get a list of CRM leads (crm.lead.list).
+
+        Args:
+            filter: Lead filter object
+            order: Sort object (field -> ASC/DESC)
+            select: List of fields to return
+            start: Pagination offset (0, 50, 100, ...)
+
+        Returns:
+            Dict with `items` (lead rows), `total` (optional), and `next` (optional).
+
+        Raises:
+            BitrixAPIError: If response format is unexpected
+        """
+        params: dict[str, Any] = {
+            "filter": filter or {},
+            "order": order or {},
+            "select": select or ["*", "UF_*"],
+            "start": start,
+        }
+
+        data = await self._request_raw("crm.lead.list", params)
+        result = data.get("result")
+        if not isinstance(result, list):
+            raise BitrixAPIError(
+                "Unexpected response format from crm.lead.list",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        items: list[dict[str, Any]] = []
+        for item in result:
+            if not isinstance(item, dict):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.lead.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+            items.append(item)
+
+        total_raw = data.get("total")
+        total: int | None = None
+        if total_raw is not None:
+            try:
+                total = int(total_raw)
+            except (TypeError, ValueError):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.lead.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+
+        next_raw = data.get("next")
+        next_start: int | None = None
+        if next_raw is not None:
+            try:
+                next_start = int(next_raw)
+            except (TypeError, ValueError):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.lead.list",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+
+        return {"items": items, "total": total, "next": next_start}
+
     async def crm_deal_fields(self) -> dict[str, Any]:
         """Get available CRM deal fields (crm.deal.fields).
 

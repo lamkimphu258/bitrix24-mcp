@@ -15,6 +15,7 @@ from bitrix_mcp.server import (
     _crm_deal_productrows_get,
     _crm_deal_update,
     _crm_lead_get,
+    _crm_lead_list,
     _group_search,
     _scrum_epic_list,
     _scrum_task_create,
@@ -356,6 +357,93 @@ class TestCrmLeadGet:
 
         with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
             await _crm_lead_get(id=610)
+
+
+class TestCrmLeadList:
+    """Tests for crm_lead_list tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_basic(self, setup_client, mock_bitrix_api):
+        """crm_lead_list should return lead rows with pagination metadata."""
+        response = {
+            "result": [
+                {
+                    "ID": "610",
+                    "TITLE": "Lead from Website",
+                    "STATUS_ID": "NEW",
+                    "CONTACT_ID": "84",
+                },
+                {
+                    "ID": "611",
+                    "TITLE": "Inbound Call Lead",
+                    "STATUS_ID": "IN_PROCESS",
+                    "CONTACT_ID": "85",
+                },
+            ],
+            "total": 95,
+            "next": 50,
+        }
+        mock_bitrix_api.post("crm.lead.list").mock(return_value=Response(200, json=response))
+
+        result = await _crm_lead_list(
+            filter={"STATUS_ID": "NEW"},
+            order={"TITLE": "ASC"},
+            select=["ID", "TITLE", "STATUS_ID"],
+            start=0,
+        )
+
+        assert len(result["items"]) == 2
+        assert result["items"][0]["ID"] == "610"
+        assert result["total"] == 95
+        assert result["next"] == 50
+        assert result["hasMore"] is True
+        assert result["start"] == 0
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_has_more_false_when_next_missing(
+        self, setup_client, mock_bitrix_api
+    ):
+        """crm_lead_list should set hasMore=False when next is absent."""
+        mock_bitrix_api.post("crm.lead.list").mock(
+            return_value=Response(
+                200,
+                json={"result": [{"ID": "610", "TITLE": "Lead from Website"}], "total": 1},
+            )
+        )
+
+        result = await _crm_lead_list(start=50)
+
+        assert len(result["items"]) == 1
+        assert result["total"] == 1
+        assert result["next"] is None
+        assert result["hasMore"] is False
+        assert result["start"] == 50
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_api_error(self, setup_client, mock_bitrix_api):
+        """crm_lead_list should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.lead.list").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Access denied"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_lead_list()
+
+    @pytest.mark.asyncio
+    async def test_crm_lead_list_connection_error(self, setup_client, monkeypatch):
+        """crm_lead_list should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_lead_list", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_lead_list()
 
 
 class TestCrmDealGet:
