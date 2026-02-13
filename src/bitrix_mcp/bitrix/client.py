@@ -469,6 +469,34 @@ class Bitrix24Client:
             error_code="UNEXPECTED_RESPONSE",
         )
 
+    async def crm_deal_delete(self, deal_id: int) -> bool:
+        """Delete a CRM deal (crm.deal.delete).
+
+        Args:
+            deal_id: Deal ID
+
+        Returns:
+            True when delete is successful, else False.
+
+        Raises:
+            ValueError: If deal_id is invalid
+            BitrixAPIError: If response format is unexpected
+        """
+        if deal_id <= 0:
+            raise ValueError("Deal id must be greater than 0.")
+
+        result = await self._request("crm.deal.delete", {"id": deal_id})
+
+        if isinstance(result, bool):
+            return result
+        if isinstance(result, (int, str)):
+            return str(result).strip().lower() in {"1", "true", "yes"}
+
+        raise BitrixAPIError(
+            "Unexpected response format from crm.deal.delete",
+            error_code="UNEXPECTED_RESPONSE",
+        )
+
     async def task_add(
         self,
         title: str,

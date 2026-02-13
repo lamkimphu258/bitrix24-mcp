@@ -308,6 +308,33 @@ async def _crm_deal_update(id: int, fields: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _crm_deal_delete(id: int) -> dict[str, Any]:
+    """Delete a CRM deal (crm.deal.delete).
+
+    Args:
+        id: Deal ID
+
+    Returns:
+        Object containing id and deleted flag.
+    """
+    if id <= 0:
+        raise RuntimeError("Deal id must be greater than 0.")
+
+    client = get_client()
+
+    try:
+        deleted = await client.crm_deal_delete(deal_id=id)
+        return {"id": id, "deleted": deleted}
+    except ValueError as e:
+        raise RuntimeError(str(e))
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM deal delete: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM deal delete: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _task_comment_add(id: int, message: str) -> dict[str, Any]:
     """Add a comment to a task.
 
@@ -1224,6 +1251,12 @@ async def crm_deal_add(fields: dict[str, Any]) -> dict[str, Any]:
 async def crm_deal_update(id: int, fields: dict[str, Any]) -> dict[str, Any]:
     """Update a CRM deal (crm.deal.update)."""
     return await _crm_deal_update(id=id, fields=fields)
+
+
+@mcp.tool
+async def crm_deal_delete(id: int) -> dict[str, Any]:
+    """Delete a CRM deal (crm.deal.delete)."""
+    return await _crm_deal_delete(id=id)
 
 
 @mcp.tool

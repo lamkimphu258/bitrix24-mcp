@@ -8,6 +8,7 @@ from bitrix_mcp.bitrix.client import Bitrix24Client
 from bitrix_mcp.bitrix.types import BitrixConnectionError
 from bitrix_mcp.server import (
     _crm_deal_add,
+    _crm_deal_delete,
     _crm_deal_fields,
     _crm_deal_get,
     _crm_deal_list,
@@ -671,6 +672,60 @@ class TestCrmDealUpdate:
 
         with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
             await _crm_deal_update(id=410, fields={"TITLE": "Updated"})
+
+
+class TestCrmDealDelete:
+    """Tests for crm_deal_delete tool."""
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_delete_basic(
+        self, setup_client, sample_crm_deal_delete_response, mock_bitrix_api
+    ):
+        """crm_deal_delete should return id and deleted flag."""
+        mock_bitrix_api.post("crm.deal.delete").mock(
+            return_value=Response(200, json=sample_crm_deal_delete_response)
+        )
+
+        result = await _crm_deal_delete(id=410)
+        assert result == {"id": 410, "deleted": True}
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body["id"] == 410
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_delete_rejects_invalid_id(self, setup_client):
+        """crm_deal_delete should reject non-positive IDs."""
+        with pytest.raises(RuntimeError, match="greater than 0"):
+            await _crm_deal_delete(id=0)
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_delete_api_error(self, setup_client, mock_bitrix_api):
+        """crm_deal_delete should map API errors to RuntimeError."""
+        mock_bitrix_api.post("crm.deal.delete").mock(
+            return_value=Response(
+                200,
+                json={"error": "ERROR_CORE", "error_description": "Deal not found"},
+            )
+        )
+
+        with pytest.raises(RuntimeError, match="Bitrix24 API error:"):
+            await _crm_deal_delete(id=99999)
+
+    @pytest.mark.asyncio
+    async def test_crm_deal_delete_connection_error(self, setup_client, monkeypatch):
+        """crm_deal_delete should map connection errors to RuntimeError."""
+        client = get_client()
+
+        async def raise_connection_error(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise BitrixConnectionError("Network timeout")
+
+        monkeypatch.setattr(client, "crm_deal_delete", raise_connection_error)
+
+        with pytest.raises(RuntimeError, match="Failed to connect to Bitrix24"):
+            await _crm_deal_delete(id=410)
 
 
 class TestTaskCommentAdd:
