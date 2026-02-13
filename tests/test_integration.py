@@ -12,6 +12,7 @@ from bitrix_mcp.server import (
     _crm_deal_fields,
     _crm_deal_get,
     _crm_deal_list,
+    _crm_deal_productrows_get,
     _task_create,
     _task_get,
     _task_search,
@@ -361,3 +362,38 @@ class TestCrmWorkflow:
         list_result = await _crm_deal_list(contactId=84, select=["ID", "TITLE", "CONTACT_ID"])
         assert len(list_result["items"]) == 1
         assert list_result["items"][0]["CONTACT_ID"] == "84"
+
+    @pytest.mark.asyncio
+    async def test_list_deal_then_get_product_rows(
+        self, setup_integration, sample_crm_deal_productrows_get_response
+    ):
+        """User can list deals and then inspect products attached to a selected deal."""
+        mock_api = setup_integration
+
+        mock_api.post("crm.deal.list").mock(
+            return_value=Response(
+                200,
+                json={
+                    "result": [
+                        {"ID": "410", "TITLE": "New Deal #1"},
+                    ],
+                    "total": 1,
+                },
+            )
+        )
+
+        list_result = await _crm_deal_list(select=["ID", "TITLE"])
+        assert len(list_result["items"]) == 1
+        deal_id = int(list_result["items"][0]["ID"])
+
+        mock_api.post("crm.deal.productrows.get").mock(
+            return_value=Response(200, json=sample_crm_deal_productrows_get_response)
+        )
+
+        products = await _crm_deal_productrows_get(id=deal_id)
+        assert products["dealId"] == 410
+        assert products["count"] == 2
+        assert products["items"][0]["PRODUCT_NAME"] == "Website Subscription"
+        assert products["items"][1]["PRODUCT_NAME"] == "Onboarding Package"
+
+        assert mock_api.calls.call_count == 2

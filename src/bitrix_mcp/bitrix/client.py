@@ -376,6 +376,37 @@ class Bitrix24Client:
 
         return {"items": items, "total": total, "next": next_start}
 
+    async def crm_deal_productrows_get(self, deal_id: int) -> list[dict[str, Any]]:
+        """Get product rows attached to a CRM deal (crm.deal.productrows.get).
+
+        Args:
+            deal_id: Deal ID
+
+        Returns:
+            List of product row objects.
+
+        Raises:
+            BitrixAPIError: If response format is unexpected
+        """
+        result = await self._request("crm.deal.productrows.get", {"id": deal_id})
+
+        if not isinstance(result, list):
+            raise BitrixAPIError(
+                "Unexpected response format from crm.deal.productrows.get",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        product_rows: list[dict[str, Any]] = []
+        for row in result:
+            if not isinstance(row, dict):
+                raise BitrixAPIError(
+                    "Unexpected response format from crm.deal.productrows.get",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+            product_rows.append(row)
+
+        return product_rows
+
     async def task_add(
         self,
         title: str,

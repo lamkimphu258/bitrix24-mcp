@@ -203,6 +203,35 @@ def sample_crm_deal_fields_response() -> dict:
 
 
 @pytest.fixture
+def sample_crm_deal_productrows_get_response() -> dict:
+    """Return sample response for crm.deal.productrows.get API."""
+    return {
+        "result": [
+            {
+                "ID": "120",
+                "PRODUCT_ID": "101",
+                "PRODUCT_NAME": "Website Subscription",
+                "PRICE": "99.00",
+                "QUANTITY": "1",
+                "DISCOUNT_SUM": "0.00",
+                "TAX_RATE": "0.00",
+                "CURRENCY": "USD",
+            },
+            {
+                "ID": "121",
+                "PRODUCT_ID": "102",
+                "PRODUCT_NAME": "Onboarding Package",
+                "PRICE": "250.00",
+                "QUANTITY": "1",
+                "DISCOUNT_SUM": "25.00",
+                "TAX_RATE": "0.00",
+                "CURRENCY": "USD",
+            },
+        ]
+    }
+
+
+@pytest.fixture
 def sample_task_comment_list_response() -> dict:
     """Return sample response for task.commentitem.getlist API."""
     return {

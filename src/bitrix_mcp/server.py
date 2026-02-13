@@ -225,6 +225,32 @@ async def _crm_deal_list(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
+async def _crm_deal_productrows_get(id: int) -> dict[str, Any]:
+    """Get products attached to a CRM deal (crm.deal.productrows.get).
+
+    Args:
+        id: Deal ID
+
+    Returns:
+        Object containing dealId, items, and count.
+    """
+    client = get_client()
+
+    try:
+        items = await client.crm_deal_productrows_get(deal_id=id)
+        return {
+            "dealId": id,
+            "items": items,
+            "count": len(items),
+        }
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during CRM deal product rows get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during CRM deal product rows get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
 async def _task_comment_add(id: int, message: str) -> dict[str, Any]:
     """Add a comment to a task.
 
@@ -1123,6 +1149,12 @@ async def crm_deal_list(
         start=start,
         contactId=contactId,
     )
+
+
+@mcp.tool
+async def crm_deal_productrows_get(id: int) -> dict[str, Any]:
+    """Get products attached to a deal (crm.deal.productrows.get)."""
+    return await _crm_deal_productrows_get(id=id)
 
 
 @mcp.tool
