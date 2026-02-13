@@ -497,6 +497,44 @@ class TestScrumBacklogWorkflow:
         assert result["tasks"][1]["id"] == 789
         assert result["tasks"][1]["status"] == "in_progress"
 
+    @pytest.mark.asyncio
+    async def test_fetch_backlog_with_combined_server_side_filters(
+        self,
+        setup_integration,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_2_response,
+    ):
+        """Tool should forward query/status/responsible filters to tasks.task.list."""
+        mock_api = setup_integration
+
+        mock_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_2_response)
+        )
+
+        result = await _scrum_backlog_tasks(
+            groupId=205,
+            query="welcome",
+            status="pending",
+            responsibleId=7,
+        )
+
+        assert result["groupId"] == 205
+        assert result["backlogId"] == 91
+        assert result["count"] == 1
+        assert result["tasks"][0]["id"] == 789
+
+        import json
+
+        request_body = json.loads(mock_api.calls[1].request.content)
+        assert request_body["filter"]["GROUP_ID"] == 205
+        assert request_body["filter"]["BACKLOG_ID"] == 91
+        assert request_body["filter"]["%TITLE"] == "welcome"
+        assert request_body["filter"]["STATUS"] == 2
+        assert request_body["filter"]["RESPONSIBLE_ID"] == 7
+
 
 class TestCrmLeadWorkflow:
     """Test CRM lead workflow across lead endpoints."""

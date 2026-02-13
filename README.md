@@ -6,7 +6,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), list deal fields and deals, fetch deal details and product rows, add/update/delete deals, create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), fetch all Scrum backlog tasks in one call, and manage Kanban/My Planner columns (get stages, move/reorder tasks).
+Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), list deal fields and deals, fetch deal details and product rows, add/update/delete deals, create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), fetch and filter Scrum backlog tasks in one call, and manage Kanban/My Planner columns (get stages, move/reorder tasks).
 
 ---
 
@@ -275,10 +275,13 @@ List Scrum epics for a Scrum group (via `tasks.api.scrum.epic.list`). Use this t
 ### scrum_backlog_tasks
 
 Get all tasks currently in the backlog for a Scrum group.
+Supports optional server-side filtering by title substring, status, and assignee.
 
 Internally this tool:
 - resolves backlog metadata via `tasks.api.scrum.backlog.get` using `groupId`
-- fetches all backlog cards via paginated `tasks.task.list` using `GROUP_ID` + `BACKLOG_ID`
+- fetches all backlog cards via paginated `tasks.task.list` using:
+  - required: `GROUP_ID` + `BACKLOG_ID`
+  - optional: `%TITLE` (from `query`), `STATUS` (from `status`), `RESPONSIBLE_ID` (from `responsibleId`)
 
 Returns:
 - `groupId` - requested Scrum group/workgroup ID
@@ -289,6 +292,9 @@ Returns:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `groupId` | int | Yes | Scrum group/workgroup ID |
+| `query` | string | No | Task title substring filter (mapped to `%TITLE`) |
+| `status` | string | No | Task status filter (mapped to `STATUS`). Accepted values: `pending`, `in_progress`, `supposedly_completed`, `completed`, `deferred` |
+| `responsibleId` | int | No | Assignee user ID filter (mapped to `RESPONSIBLE_ID`) |
 
 ### scrum_task_get
 

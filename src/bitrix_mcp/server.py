@@ -930,21 +930,42 @@ async def _task_stages_move_task(
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
-async def _scrum_backlog_tasks(groupId: int) -> dict[str, Any]:
+async def _scrum_backlog_tasks(
+    groupId: int,
+    query: str | None = None,
+    status: str | None = None,
+    responsibleId: int | None = None,
+) -> dict[str, Any]:
     """Return all tasks currently in a Scrum group's backlog.
 
     Flow:
     1) Resolve backlog metadata via tasks.api.scrum.backlog.get
-    2) List tasks using GROUP_ID + BACKLOG_ID filters with pagination
-    3) Normalize each task card to search-result format
+    2) Build list filters using GROUP_ID + BACKLOG_ID (+ optional filters)
+    3) List tasks with pagination
+    4) Normalize each task card to search-result format
     """
     client = get_client()
     base_url = client.get_base_url()
 
     try:
         backlog = await client.scrum_backlog_get(group_id=groupId)
+
+        task_filter: dict[str, Any] = {"GROUP_ID": groupId, "BACKLOG_ID": backlog.id}
+        if query:
+            task_filter["%TITLE"] = query
+        if status is not None:
+            try:
+                task_filter["STATUS"] = _map_status_to_code(status)
+            except ValueError as e:
+                raise RuntimeError(
+                    f"{e}. Use one of: pending, in_progress, supposedly_completed, "
+                    "completed, deferred."
+                ) from e
+        if responsibleId is not None:
+            task_filter["RESPONSIBLE_ID"] = responsibleId
+
         tasks = await client.task_list_all_pages(
-            filter={"GROUP_ID": groupId, "BACKLOG_ID": backlog.id},
+            filter=task_filter,
             limit=50,
         )
 
@@ -1606,13 +1627,24 @@ async def scrum_epic_list(
 
 
 @mcp.tool
-async def scrum_backlog_tasks(groupId: int) -> dict[str, Any]:
+async def scrum_backlog_tasks(
+    groupId: int,
+    query: str | None = None,
+    status: str | None = None,
+    responsibleId: int | None = None,
+) -> dict[str, Any]:
     """Return all tasks currently in the backlog for a Scrum group.
 
     Internally resolves backlog metadata via tasks.api.scrum.backlog.get, then fetches all
-    backlog tasks via paginated tasks.task.list calls filtered by GROUP_ID and BACKLOG_ID.
+    backlog tasks via paginated tasks.task.list calls filtered by GROUP_ID, BACKLOG_ID,
+    and optional query/status/responsible filters.
     """
-    return await _scrum_backlog_tasks(groupId=groupId)
+    return await _scrum_backlog_tasks(
+        groupId=groupId,
+        query=query,
+        status=status,
+        responsibleId=responsibleId,
+    )
 
 
 @mcp.tool

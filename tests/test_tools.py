@@ -1745,10 +1745,135 @@ class TestScrumBacklogTasks:
 
         assert first_page_body["filter"]["GROUP_ID"] == 205
         assert first_page_body["filter"]["BACKLOG_ID"] == 91
+        assert "%TITLE" not in first_page_body["filter"]
+        assert "STATUS" not in first_page_body["filter"]
+        assert "RESPONSIBLE_ID" not in first_page_body["filter"]
         assert first_page_body["start"] == 0
         assert second_page_body["filter"]["GROUP_ID"] == 205
         assert second_page_body["filter"]["BACKLOG_ID"] == 91
+        assert "%TITLE" not in second_page_body["filter"]
+        assert "STATUS" not in second_page_body["filter"]
+        assert "RESPONSIBLE_ID" not in second_page_body["filter"]
         assert second_page_body["start"] == 50
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_query_filter_maps_to_title(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should map query to %TITLE in task list filter."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_2_response)
+        )
+
+        await _scrum_backlog_tasks(groupId=205, query="welcome")
+
+        import json
+
+        request_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        assert request_body["filter"]["%TITLE"] == "welcome"
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_status_filter_maps_to_code(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should map status string to STATUS code in task list filter."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_2_response)
+        )
+
+        await _scrum_backlog_tasks(groupId=205, status="in progress")
+
+        import json
+
+        request_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        assert request_body["filter"]["STATUS"] == 3
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_responsible_filter_maps_to_id(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should map responsibleId to RESPONSIBLE_ID in task list filter."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_2_response)
+        )
+
+        await _scrum_backlog_tasks(groupId=205, responsibleId=7)
+
+        import json
+
+        request_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        assert request_body["filter"]["RESPONSIBLE_ID"] == 7
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_combined_filters_sent_together(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        sample_task_list_backlog_page_2_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should send query, status, and responsible filters together."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+        mock_bitrix_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_backlog_page_2_response)
+        )
+
+        await _scrum_backlog_tasks(
+            groupId=205,
+            query="welcome",
+            status="in_progress",
+            responsibleId=7,
+        )
+
+        import json
+
+        request_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        filter_payload = request_body["filter"]
+        assert filter_payload["GROUP_ID"] == 205
+        assert filter_payload["BACKLOG_ID"] == 91
+        assert filter_payload["%TITLE"] == "welcome"
+        assert filter_payload["STATUS"] == 3
+        assert filter_payload["RESPONSIBLE_ID"] == 7
+
+    @pytest.mark.asyncio
+    async def test_scrum_backlog_tasks_invalid_status_raises_runtime_error(
+        self,
+        setup_client,
+        sample_scrum_backlog_get_response,
+        mock_bitrix_api,
+    ):
+        """scrum_backlog_tasks should reject unknown status strings."""
+        mock_bitrix_api.post("tasks.api.scrum.backlog.get").mock(
+            return_value=Response(200, json=sample_scrum_backlog_get_response)
+        )
+
+        with pytest.raises(RuntimeError, match="Unknown task status"):
+            await _scrum_backlog_tasks(groupId=205, status="banana")
+
+        assert mock_bitrix_api.calls.call_count == 1
 
     @pytest.mark.asyncio
     async def test_scrum_backlog_tasks_empty_backlog_returns_empty_list(
