@@ -121,6 +121,27 @@ args = ["bitrix24-lkp-mcp"]
 env = { "BITRIX_WEBHOOK_URL" = "https://your-domain.bitrix24.com/rest/1/token/" }
 ```
 
+### 4. Optional: Run with streamable-http transport
+
+Default transport is `stdio`. To run an HTTP endpoint instead:
+
+```bash
+python -m bitrix_mcp --transport streamable-http --host 0.0.0.0 --port 8000 --path /mcp
+```
+
+You can also configure startup via environment variables:
+
+```bash
+export BITRIX_MCP_TRANSPORT="streamable-http"
+export BITRIX_MCP_HOST="0.0.0.0"
+export BITRIX_MCP_PORT="8000"
+export BITRIX_MCP_PATH="/mcp"
+
+# Optional streamable-http flags:
+export BITRIX_MCP_JSON_RESPONSE="false"
+export BITRIX_MCP_STATELESS_HTTP="false"
+```
+
 ## Available Tools
 
 ### task_search
@@ -425,7 +446,12 @@ source .venv/bin/activate
 uv pip install -e ".[dev]"
 
 export BITRIX_WEBHOOK_URL="https://your-domain.bitrix24.com/rest/1/token/"
+
+# Default (stdio)
 python -m bitrix_mcp
+
+# Optional streamable-http endpoint
+python -m bitrix_mcp --transport streamable-http --host 0.0.0.0 --port 8000 --path /mcp
 ```
 
 To point Cursor at your local checkout, set `command` to your local venv python:
