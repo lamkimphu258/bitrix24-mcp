@@ -32,6 +32,35 @@ Set your webhook URL and configure your MCP client:
 }
 ```
 
+## Docker
+
+For containerized usage, the image defaults to `streamable-http` transport and exposes
+`http://localhost:8000/mcp`.
+
+Build the image:
+
+```bash
+docker build -t bitrix24-lkp-mcp .
+```
+
+Run the container (inject webhook at runtime, never bake secrets into images):
+
+```bash
+docker run --rm \
+  -p 8000:8000 \
+  -e BITRIX_WEBHOOK_URL="https://your-domain.bitrix24.com/rest/1/token/" \
+  bitrix24-lkp-mcp
+```
+
+Run with Docker Compose:
+
+```bash
+export BITRIX_WEBHOOK_URL="https://your-domain.bitrix24.com/rest/1/token/"
+docker compose up --build
+```
+
+For local MCP desktop clients (Cursor/Claude/Codex), keep using `stdio` transport via `uvx`.
+
 ## Features
 
 Bitrix24 MCP provides tools for AI-assisted task planning:
@@ -119,6 +148,36 @@ export BITRIX_WEBHOOK_URL="https://your-domain.bitrix24.com/rest/1/your-token/"
 command = "uvx"
 args = ["bitrix24-lkp-mcp"]
 env = { "BITRIX_WEBHOOK_URL" = "https://your-domain.bitrix24.com/rest/1/token/" }
+```
+
+### 4. Optional: Run with streamable-http transport
+
+Default transport is `stdio`. To run an HTTP endpoint instead:
+
+```bash
+python -m bitrix_mcp --transport streamable-http --host 0.0.0.0 --port 8000 --path /mcp
+```
+
+**Codex CLI (streamable-http)** - Add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.bitrix24]
+url = "http://127.0.0.1:8000/mcp"
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+```
+
+You can also configure startup via environment variables:
+
+```bash
+export BITRIX_MCP_TRANSPORT="streamable-http"
+export BITRIX_MCP_HOST="0.0.0.0"
+export BITRIX_MCP_PORT="8000"
+export BITRIX_MCP_PATH="/mcp"
+
+# Optional streamable-http flags:
+export BITRIX_MCP_JSON_RESPONSE="false"
+export BITRIX_MCP_STATELESS_HTTP="false"
 ```
 
 ## Available Tools
@@ -425,7 +484,12 @@ source .venv/bin/activate
 uv pip install -e ".[dev]"
 
 export BITRIX_WEBHOOK_URL="https://your-domain.bitrix24.com/rest/1/token/"
+
+# Default (stdio)
 python -m bitrix_mcp
+
+# Optional streamable-http endpoint
+python -m bitrix_mcp --transport streamable-http --host 0.0.0.0 --port 8000 --path /mcp
 ```
 
 To point Cursor at your local checkout, set `command` to your local venv python:

@@ -31,7 +31,21 @@ pip install -e ".[dev]"
 
 ```bash
 export BITRIX_WEBHOOK_URL="https://your-domain.bitrix24.com/rest/1/token/"
+
+# Default (stdio)
 python -m bitrix_mcp
+
+# Optional streamable-http endpoint
+python -m bitrix_mcp --transport streamable-http --host 0.0.0.0 --port 8000 --path /mcp
+```
+
+You can also configure HTTP startup with environment variables:
+
+```bash
+export BITRIX_MCP_TRANSPORT="streamable-http"
+export BITRIX_MCP_HOST="0.0.0.0"
+export BITRIX_MCP_PORT="8000"
+export BITRIX_MCP_PATH="/mcp"
 ```
 
 ### Running Tests
@@ -127,4 +141,3 @@ bitrix-mcp/
 - **Never commit your webhook URL** - Use environment variables
 - **Webhook permissions** - Only grant necessary permissions (tasks read/write)
 - **Revoke if compromised** - You can revoke webhook tokens from Bitrix24 settings
-

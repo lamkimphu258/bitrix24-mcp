@@ -1,0 +1,17 @@
+services:
+  bitrix24-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bitrix24-lkp-mcp:local
+    environment:
+      BITRIX_WEBHOOK_URL: ${BITRIX_WEBHOOK_URL:?BITRIX_WEBHOOK_URL is required}
+      BITRIX_MCP_TRANSPORT: ${BITRIX_MCP_TRANSPORT:-streamable-http}
+      BITRIX_MCP_HOST: ${BITRIX_MCP_HOST:-0.0.0.0}
+      BITRIX_MCP_PORT: ${BITRIX_MCP_PORT:-8000}
+      BITRIX_MCP_PATH: ${BITRIX_MCP_PATH:-/mcp}
+      BITRIX_MCP_JSON_RESPONSE: ${BITRIX_MCP_JSON_RESPONSE:-false}
+      BITRIX_MCP_STATELESS_HTTP: ${BITRIX_MCP_STATELESS_HTTP:-false}
+    ports:
+      - "${BITRIX_MCP_PORT:-8000}:${BITRIX_MCP_PORT:-8000}"
+    restart: unless-stopped
