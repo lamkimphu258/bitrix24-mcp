@@ -158,6 +158,15 @@ Default transport is `stdio`. To run an HTTP endpoint instead:
 python -m bitrix_mcp --transport streamable-http --host 0.0.0.0 --port 8000 --path /mcp
 ```
 
+**Codex CLI (streamable-http)** - Add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.bitrix24]
+url = "http://127.0.0.1:8000/mcp"
+startup_timeout_sec = 20
+tool_timeout_sec = 60
+```
+
 You can also configure startup via environment variables:
 
 ```bash
