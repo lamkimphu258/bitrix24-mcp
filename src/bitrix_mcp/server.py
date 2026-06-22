@@ -697,6 +697,62 @@ def _map_priority_to_code(priority: str | int) -> int:
     raise ValueError(f"Unknown task priority: {priority}. Use one of: low, medium, high.")
 
 
+def _normalize_sprint_status(value: str | None) -> str:
+    """Normalize a Scrum sprint status for comparisons."""
+    return (value or "").strip().lower()
+
+
+def _parse_sprint_datetime(dt_str: str | None) -> datetime | None:
+    """Parse a Scrum sprint date as a timezone-aware UTC datetime."""
+    if not dt_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(dt_str)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+async def _get_current_scrum_sprint(client: Bitrix24Client, group_id: int) -> Any:
+    """Resolve the active or best available current Scrum sprint for a group."""
+    sprints = await client.scrum_sprint_list(group_id=group_id)
+    if not sprints:
+        raise RuntimeError(f"No sprints found for groupId={group_id}")
+
+    current_sprint = next(
+        (s for s in sprints if _normalize_sprint_status(s.status) == "active"),
+        None,
+    )
+
+    if current_sprint is None:
+        now = datetime.now(timezone.utc)
+        in_range: list[tuple[datetime, Any]] = []
+        for sprint in sprints:
+            date_start = _parse_sprint_datetime(sprint.date_start)
+            date_end = _parse_sprint_datetime(sprint.date_end)
+            if (
+                date_start
+                and date_end
+                and date_start <= now <= date_end
+                and _normalize_sprint_status(sprint.status) in {"planned", "active"}
+            ):
+                in_range.append((date_start, sprint))
+
+        if in_range:
+            in_range.sort(key=lambda x: x[0], reverse=True)
+            current_sprint = in_range[0][1]
+
+    if current_sprint is None:
+        current_sprint = next(
+            (s for s in sprints if _normalize_sprint_status(s.status) not in {"completed", "done"}),
+            sprints[0],
+        )
+
+    return current_sprint
+
+
 async def _task_update(
     id: int,
     title: str | None = None,
@@ -771,22 +827,71 @@ async def _task_update(
             raise RuntimeError(str(e))
 
     try:
-        await client.task_update(
-            task_id=id,
-            title=title,
-            description=description,
-            priority=priority_code,
-            status=status_code,
-            responsible_id=responsibleId,
-            accomplices=accomplices,
-            auditors=auditors,
-            deadline=deadline,
-            start_date_plan=startDatePlan,
-            end_date_plan=endDatePlan,
-            group_id=groupId,
-            parent_id=parentId,
-            stage_id=stageId,
+        has_non_stage_field = (
+            title is not None
+            or description is not None
+            or priority is not None
+            or status is not None
+            or responsibleId is not None
+            or accomplices is not None
+            or auditors is not None
+            or deadline is not None
+            or startDatePlan is not None
+            or endDatePlan is not None
+            or groupId is not None
+            or parentId is not None
         )
+
+        if has_non_stage_field:
+            await client.task_update(
+                task_id=id,
+                title=title,
+                description=description,
+                priority=priority_code,
+                status=status_code,
+                responsible_id=responsibleId,
+                accomplices=accomplices,
+                auditors=auditors,
+                deadline=deadline,
+                start_date_plan=startDatePlan,
+                end_date_plan=endDatePlan,
+                group_id=groupId,
+                parent_id=parentId,
+            )
+
+        if stageId is not None:
+            task = await client.task_get(task_id=id)
+            task_group_id = groupId if groupId is not None else int(task.group_id or 0)
+
+            moved_with_scrum = False
+            if task_group_id:
+                try:
+                    current_sprint = await _get_current_scrum_sprint(client, task_group_id)
+                except RuntimeError as e:
+                    if not str(e).startswith("No sprints found"):
+                        raise
+                else:
+                    scrum_stages = await client.scrum_kanban_get_stages(sprint_id=current_sprint.id)
+                    scrum_stage_ids = {int(stage.id) for stage in scrum_stages}
+                    if stageId in scrum_stage_ids:
+                        await client.scrum_kanban_add_task(
+                            sprint_id=current_sprint.id,
+                            task_id=id,
+                            stage_id=stageId,
+                        )
+                        moved_with_scrum = True
+
+            if not moved_with_scrum:
+                await client.task_stage_move(task_id=id, stage_id=stageId)
+
+            verified_task = await client.task_get(task_id=id)
+            actual_stage_id = int(verified_task.stage_id) if verified_task.stage_id else None
+            if actual_stage_id != stageId:
+                raise RuntimeError(
+                    f"Bitrix24 reported success, but task {id} stayed in stage "
+                    f"{actual_stage_id}; expected stage {stageId}."
+                )
+
         return {"id": id, "updated": True}
     except BitrixConnectionError as e:
         logger.error(f"Connection error during task update: {e}")
@@ -823,51 +928,7 @@ async def _task_stages_get(entityId: int) -> list[dict[str, Any]]:
             )
 
         # Scrum boards have stages per sprint.
-        sprints = await client.scrum_sprint_list(group_id=entityId)
-        if not sprints:
-            raise RuntimeError(f"No sprints found for groupId={entityId}")
-
-        def _norm(value: str | None) -> str:
-            return (value or "").strip().lower()
-
-        current_sprint = next((s for s in sprints if _norm(s.status) == "active"), None)
-
-        if current_sprint is None:
-            now = datetime.now(timezone.utc)
-
-            def _parse_iso(dt_str: str | None) -> datetime | None:
-                if not dt_str:
-                    return None
-                try:
-                    dt = datetime.fromisoformat(dt_str)
-                except ValueError:
-                    return None
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt.astimezone(timezone.utc)
-
-            in_range: list[tuple[datetime, Any]] = []
-            for sprint in sprints:
-                date_start = _parse_iso(sprint.date_start)
-                date_end = _parse_iso(sprint.date_end)
-                if (
-                    date_start
-                    and date_end
-                    and date_start <= now <= date_end
-                    and _norm(sprint.status) in {"planned", "active"}
-                ):
-                    in_range.append((date_start, sprint))
-
-            if in_range:
-                in_range.sort(key=lambda x: x[0], reverse=True)
-                current_sprint = in_range[0][1]
-
-        if current_sprint is None:
-            current_sprint = next(
-                (s for s in sprints if _norm(s.status) not in {"completed", "done"}),
-                sprints[0],
-            )
-
+        current_sprint = await _get_current_scrum_sprint(client, entityId)
         stages = await client.scrum_kanban_get_stages(sprint_id=current_sprint.id)
         results = [stage.to_result() for stage in stages]
         return sorted(

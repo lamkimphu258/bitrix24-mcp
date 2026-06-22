@@ -988,6 +988,32 @@ class Bitrix24Client:
 
         return stages
 
+    async def task_stage_move(
+        self,
+        task_id: int,
+        stage_id: int,
+        before: int | None = None,
+        after: int | None = None,
+    ) -> bool:
+        """Move a task to a Kanban or "My Plan" stage.
+
+        Args:
+            task_id: Task ID to move.
+            stage_id: Target stage ID.
+            before: Optional task ID before which the task should be placed.
+            after: Optional task ID after which the task should be placed.
+
+        Returns:
+            True when Bitrix24 reports a successful move.
+        """
+        params: dict[str, Any] = {"id": task_id, "stageId": stage_id}
+        if before is not None:
+            params["before"] = before
+        if after is not None:
+            params["after"] = after
+
+        return bool(await self._request("task.stages.movetask", params))
+
     async def scrum_sprint_list(self, group_id: int) -> list[BitrixScrumSprint]:
         """Get Scrum sprints for a group (tasks.api.scrum.sprint.list).
 
@@ -1032,6 +1058,24 @@ class Bitrix24Client:
             )
 
         return [BitrixScrumKanbanStage.model_validate(item) for item in result]
+
+    async def scrum_kanban_add_task(self, sprint_id: int, task_id: int, stage_id: int) -> bool:
+        """Add or move a task to a Scrum Kanban stage.
+
+        Args:
+            sprint_id: Sprint ID containing the target stage.
+            task_id: Task ID to add or move.
+            stage_id: Target Scrum Kanban stage ID.
+
+        Returns:
+            True when Bitrix24 reports a successful move.
+        """
+        params = {
+            "sprintId": sprint_id,
+            "taskId": task_id,
+            "stageId": stage_id,
+        }
+        return bool(await self._request("tasks.api.scrum.kanban.addTask", params))
 
     async def scrum_backlog_get(self, group_id: int) -> BitrixScrumBacklog:
         """Get Scrum backlog metadata for a group (tasks.api.scrum.backlog.get).

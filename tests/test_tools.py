@@ -1254,7 +1254,6 @@ class TestTaskUpdate:
             endDatePlan="2025-12-02T18:00:00+02:00",
             groupId=5,
             parentId=0,
-            stageId=11,
         )
 
         assert result == {"id": 456, "updated": True}
@@ -1277,7 +1276,191 @@ class TestTaskUpdate:
         assert fields["END_DATE_PLAN"] == "2025-12-02T18:00:00+02:00"
         assert fields["GROUP_ID"] == 5
         assert fields["PARENT_ID"] == 0
-        assert fields["STAGE_ID"] == 11
+        assert "STAGE_ID" not in fields
+
+    @pytest.mark.asyncio
+    async def test_task_update_stage_id_uses_scrum_move(self, setup_client, mock_bitrix_api):
+        """task_update should use Scrum addTask when target stage is in the active sprint."""
+        task_before = {
+            "result": {
+                "task": {
+                    "id": "456",
+                    "title": "Move me",
+                    "responsibleId": "7",
+                    "groupId": "5",
+                    "stageId": "3037",
+                    "createdBy": "1",
+                    "status": "2",
+                }
+            }
+        }
+        task_after = {
+            "result": {
+                "task": {
+                    "id": "456",
+                    "title": "Move me",
+                    "responsibleId": "7",
+                    "groupId": "5",
+                    "stageId": "3041",
+                    "createdBy": "1",
+                    "status": "2",
+                }
+            }
+        }
+        sprint_response = {
+            "result": [
+                {
+                    "id": 5,
+                    "groupId": 5,
+                    "entityType": "sprint",
+                    "name": "Sprint 5",
+                    "dateStart": "2025-12-01T00:00:00+00:00",
+                    "dateEnd": "2025-12-31T23:59:59+00:00",
+                    "status": "active",
+                }
+            ]
+        }
+        stages_response = {
+            "result": [
+                {"id": "3037", "name": "To Do", "sort": "100", "sprintId": "5"},
+                {"id": "3039", "name": "Doing", "sort": "200", "sprintId": "5"},
+                {"id": "3041", "name": "Done", "sort": "300", "sprintId": "5"},
+            ]
+        }
+        mock_bitrix_api.post("tasks.task.get").mock(
+            side_effect=[
+                Response(200, json=task_before),
+                Response(200, json=task_after),
+            ]
+        )
+        mock_bitrix_api.post("tasks.api.scrum.sprint.list").mock(
+            return_value=Response(200, json=sprint_response)
+        )
+        mock_bitrix_api.post("tasks.api.scrum.kanban.getStages").mock(
+            return_value=Response(200, json=stages_response)
+        )
+        mock_bitrix_api.post("tasks.api.scrum.kanban.addTask").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        result = await _task_update(id=456, stageId=3041)
+
+        assert result == {"id": 456, "updated": True}
+        assert not any(
+            call.request.url.path.endswith("tasks.task.update") for call in mock_bitrix_api.calls
+        )
+
+        import json
+
+        move_call = next(
+            call for call in mock_bitrix_api.calls if call.request.url.path.endswith("addTask")
+        )
+        body = json.loads(move_call.request.content)
+        assert body == {"sprintId": 5, "taskId": 456, "stageId": 3041}
+
+    @pytest.mark.asyncio
+    async def test_task_update_stage_id_uses_task_stage_move(
+        self,
+        setup_client,
+        sample_scrum_sprint_list_response,
+        sample_scrum_kanban_get_stages_response,
+        mock_bitrix_api,
+    ):
+        """task_update should use task.stages.movetask outside Scrum sprint stages."""
+        task_before = {
+            "result": {
+                "task": {
+                    "id": "456",
+                    "title": "Move me",
+                    "responsibleId": "7",
+                    "groupId": "5",
+                    "stageId": "3037",
+                    "createdBy": "1",
+                    "status": "2",
+                }
+            }
+        }
+        task_after = {
+            "result": {
+                "task": {
+                    "id": "456",
+                    "title": "Move me",
+                    "responsibleId": "7",
+                    "groupId": "5",
+                    "stageId": "3041",
+                    "createdBy": "1",
+                    "status": "2",
+                }
+            }
+        }
+        mock_bitrix_api.post("tasks.task.get").mock(
+            side_effect=[
+                Response(200, json=task_before),
+                Response(200, json=task_after),
+            ]
+        )
+        mock_bitrix_api.post("tasks.api.scrum.sprint.list").mock(
+            return_value=Response(200, json=sample_scrum_sprint_list_response)
+        )
+        mock_bitrix_api.post("tasks.api.scrum.kanban.getStages").mock(
+            return_value=Response(200, json=sample_scrum_kanban_get_stages_response)
+        )
+        mock_bitrix_api.post("task.stages.movetask").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        result = await _task_update(id=456, stageId=3041)
+
+        assert result == {"id": 456, "updated": True}
+
+        import json
+
+        move_call = next(
+            call for call in mock_bitrix_api.calls if call.request.url.path.endswith("movetask")
+        )
+        body = json.loads(move_call.request.content)
+        assert body == {"id": 456, "stageId": 3041}
+
+    @pytest.mark.asyncio
+    async def test_task_update_stage_id_verification_failure(
+        self,
+        setup_client,
+        sample_scrum_sprint_list_response,
+        sample_scrum_kanban_get_stages_response,
+        mock_bitrix_api,
+    ):
+        """task_update should fail clearly if Bitrix leaves the task in the old stage."""
+        task_response = {
+            "result": {
+                "task": {
+                    "id": "456",
+                    "title": "Move me",
+                    "responsibleId": "7",
+                    "groupId": "5",
+                    "stageId": "3037",
+                    "createdBy": "1",
+                    "status": "2",
+                }
+            }
+        }
+        mock_bitrix_api.post("tasks.task.get").mock(
+            side_effect=[
+                Response(200, json=task_response),
+                Response(200, json=task_response),
+            ]
+        )
+        mock_bitrix_api.post("tasks.api.scrum.sprint.list").mock(
+            return_value=Response(200, json=sample_scrum_sprint_list_response)
+        )
+        mock_bitrix_api.post("tasks.api.scrum.kanban.getStages").mock(
+            return_value=Response(200, json=sample_scrum_kanban_get_stages_response)
+        )
+        mock_bitrix_api.post("task.stages.movetask").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        with pytest.raises(RuntimeError, match="reported success"):
+            await _task_update(id=456, stageId=3041)
 
     @pytest.mark.asyncio
     async def test_task_update_status_done_maps_to_completed(self, setup_client, mock_bitrix_api):

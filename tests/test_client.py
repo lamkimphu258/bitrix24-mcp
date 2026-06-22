@@ -1203,7 +1203,6 @@ class TestTaskUpdate:
                 end_date_plan="2025-12-02T18:00:00+02:00",
                 group_id=5,
                 parent_id=0,
-                stage_id=11,
             )
 
         assert result is True
@@ -1227,7 +1226,6 @@ class TestTaskUpdate:
         assert fields["END_DATE_PLAN"] == "2025-12-02T18:00:00+02:00"
         assert fields["GROUP_ID"] == 5
         assert fields["PARENT_ID"] == 0
-        assert fields["STAGE_ID"] == 11
 
     @pytest.mark.asyncio
     async def test_task_update_requires_at_least_one_field(self, mock_webhook_url):
@@ -1235,6 +1233,58 @@ class TestTaskUpdate:
         async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
             with pytest.raises(ValueError, match="At least one field must be provided"):
                 await client.task_update(task_id=456)
+
+
+class TestTaskStageMove:
+    """Tests for task_stage_move method."""
+
+    @pytest.mark.asyncio
+    async def test_task_stage_move_sends_payload(self, mock_webhook_url, mock_bitrix_api):
+        """task_stage_move should call task.stages.movetask with move parameters."""
+        mock_bitrix_api.post("task.stages.movetask").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.task_stage_move(
+                task_id=456,
+                stage_id=3041,
+                before=111,
+            )
+
+        assert result is True
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body == {"id": 456, "stageId": 3041, "before": 111}
+
+
+class TestScrumKanbanAddTask:
+    """Tests for scrum_kanban_add_task method."""
+
+    @pytest.mark.asyncio
+    async def test_scrum_kanban_add_task_sends_payload(self, mock_webhook_url, mock_bitrix_api):
+        """scrum_kanban_add_task should call tasks.api.scrum.kanban.addTask."""
+        mock_bitrix_api.post("tasks.api.scrum.kanban.addTask").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.scrum_kanban_add_task(
+                sprint_id=5,
+                task_id=456,
+                stage_id=3041,
+            )
+
+        assert result is True
+
+        import json
+
+        request = mock_bitrix_api.calls[0].request
+        body = json.loads(request.content)
+        assert body == {"sprintId": 5, "taskId": 456, "stageId": 3041}
 
 
 class TestTaskCommentItemAdd:
