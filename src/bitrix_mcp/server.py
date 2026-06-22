@@ -886,50 +886,6 @@ async def _task_stages_get(entityId: int) -> list[dict[str, Any]]:
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
-async def _task_stages_move_task(
-    id: int,
-    stageId: int,
-    before: int | None = None,
-    after: int | None = None,
-) -> dict[str, Any]:
-    """Move a task between kanban/"My Planner" stages (columns).
-
-    Args:
-        id: Task ID
-        stageId: Target stage ID
-        before: Optional task ID before which the task should be placed in the stage
-        after: Optional task ID after which the task should be placed in the stage
-
-    Returns:
-        Object containing id, stageId, and moved flag.
-    """
-    if before is not None and after is not None:
-        raise RuntimeError("Parameters 'before' and 'after' are mutually exclusive.")
-
-    client = get_client()
-
-    try:
-        moved = await client.task_stages_move_task(
-            task_id=id,
-            stage_id=stageId,
-            before=before,
-            after=after,
-        )
-
-        result: dict[str, Any] = {"id": id, "stageId": stageId, "moved": moved}
-        if before is not None:
-            result["before"] = before
-        if after is not None:
-            result["after"] = after
-        return result
-    except BitrixConnectionError as e:
-        logger.error(f"Connection error during task stage move: {e}")
-        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
-    except BitrixAPIError as e:
-        logger.error(f"API error during task stage move: {e}")
-        raise RuntimeError(f"Bitrix24 API error: {e}")
-
-
 async def _scrum_backlog_tasks(
     groupId: int,
     query: str | None = None,
@@ -1723,17 +1679,6 @@ async def task_stages_get(entityId: int) -> list[dict[str, Any]]:
     Use entityId=0 to get the current user's "My Planner" columns (non-scrum fallback).
     """
     return await _task_stages_get(entityId=entityId)
-
-
-@mcp.tool
-async def task_stages_move_task(
-    id: int, stageId: int, before: int | None = None, after: int | None = None
-) -> dict[str, Any]:
-    """Move a task between kanban/"My Planner" stages (columns).
-
-    Set `before` or `after` to control the task position within the target column.
-    """
-    return await _task_stages_move_task(id=id, stageId=stageId, before=before, after=after)
 
 
 @mcp.tool

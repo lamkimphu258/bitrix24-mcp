@@ -1175,50 +1175,6 @@ class Bitrix24Client:
             error_code="UNEXPECTED_RESPONSE",
         )
 
-    async def task_stages_move_task(
-        self,
-        task_id: int,
-        stage_id: int,
-        *,
-        before: int | None = None,
-        after: int | None = None,
-    ) -> bool:
-        """Move a task from one stage to another (kanban or "My Planner").
-
-        Args:
-            task_id: Task ID to move
-            stage_id: Stage ID to move the task to
-            before: Optional task ID before which the task should be placed in the stage
-            after: Optional task ID after which the task should be placed in the stage
-
-        Returns:
-            True if the move succeeded
-
-        Raises:
-            ValueError: If both `before` and `after` are provided
-            BitrixAPIError: If the response format is unexpected
-        """
-        if before is not None and after is not None:
-            raise ValueError("Parameters 'before' and 'after' are mutually exclusive.")
-
-        params: dict[str, Any] = {"id": task_id, "stageId": stage_id}
-        if before is not None:
-            params["before"] = before
-        if after is not None:
-            params["after"] = after
-
-        result = await self._request("task.stages.movetask", params)
-
-        if isinstance(result, bool):
-            return result
-        if isinstance(result, (int, str)):
-            return str(result).strip().lower() in {"1", "true", "yes"}
-
-        raise BitrixAPIError(
-            "Unexpected response format from task.stages.movetask",
-            error_code="UNEXPECTED_RESPONSE",
-        )
-
     async def task_commentitem_getlist(
         self,
         task_id: int,

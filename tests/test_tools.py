@@ -32,7 +32,6 @@ from bitrix_mcp.server import (
     _task_list_by_user,
     _task_search,
     _task_stages_get,
-    _task_stages_move_task,
     _task_update,
     _user_search,
     get_client,
@@ -1605,56 +1604,6 @@ class TestTaskStagesGet:
         request_1 = mock_bitrix_api.calls[1].request
         body_1 = json.loads(request_1.content)
         assert body_1["sprintId"] == 5
-
-
-class TestTaskStagesMoveTask:
-    """Tests for task_stages_move_task tool."""
-
-    @pytest.mark.asyncio
-    async def test_task_stages_move_task_basic(self, setup_client, mock_bitrix_api):
-        """task_stages_move_task should move a task to the target stage."""
-        mock_bitrix_api.post("task.stages.movetask").mock(
-            return_value=Response(200, json={"result": True})
-        )
-
-        result = await _task_stages_move_task(id=456, stageId=12)
-
-        assert result["id"] == 456
-        assert result["stageId"] == 12
-        assert result["moved"] is True
-
-        import json
-
-        request = mock_bitrix_api.calls[0].request
-        body = json.loads(request.content)
-        assert body["id"] == 456
-        assert body["stageId"] == 12
-
-    @pytest.mark.asyncio
-    async def test_task_stages_move_task_with_before(self, setup_client, mock_bitrix_api):
-        """task_stages_move_task should pass the `before` parameter when provided."""
-        mock_bitrix_api.post("task.stages.movetask").mock(
-            return_value=Response(200, json={"result": True})
-        )
-
-        result = await _task_stages_move_task(id=456, stageId=12, before=789)
-
-        assert result["before"] == 789
-
-        import json
-
-        request = mock_bitrix_api.calls[0].request
-        body = json.loads(request.content)
-        assert body["before"] == 789
-        assert "after" not in body
-
-    @pytest.mark.asyncio
-    async def test_task_stages_move_task_before_after_exclusive(
-        self, setup_client, mock_bitrix_api
-    ):
-        """task_stages_move_task should reject when both before and after are provided."""
-        with pytest.raises(RuntimeError):
-            await _task_stages_move_task(id=1, stageId=2, before=3, after=4)
 
 
 class TestScrumBacklogTasks:
