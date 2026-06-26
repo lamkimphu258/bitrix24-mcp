@@ -58,6 +58,7 @@ class BitrixTask(BaseModel):
     responsible_id: str | None = Field(default=None, alias="responsibleId")
     group_id: str | None = Field(default=None, alias="groupId")
     stage_id: str | None = Field(default=None, alias="stageId")
+    sprint_id: str | None = Field(default=None, alias="sprintId")
     parent_id: str | None = Field(default=None, alias="parentId")
     status: str
     priority: str | None = None
@@ -123,6 +124,7 @@ class BitrixTask(BaseModel):
             "responsibleId": int(self.responsible_id) if self.responsible_id else None,
             "groupId": int(self.group_id) if self.group_id else None,
             "stageId": int(self.stage_id) if self.stage_id else None,
+            "sprintId": int(self.sprint_id) if self.sprint_id else None,
             "parentId": int(self.parent_id) if self.parent_id else None,
             "status": TaskStatus.to_string(int(self.status)),
             "priority": TaskPriority.to_string(int(self.priority)) if self.priority else "medium",

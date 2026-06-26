@@ -862,9 +862,22 @@ async def _task_update(
         if stageId is not None:
             task = await client.task_get(task_id=id)
             task_group_id = groupId if groupId is not None else int(task.group_id or 0)
+            task_sprint_id = int(task.sprint_id or 0)
 
             moved_with_scrum = False
-            if task_group_id:
+            if task_sprint_id:
+                scrum_stages = await client.scrum_kanban_get_stages(sprint_id=task_sprint_id)
+                scrum_stage_ids = {int(stage.id) for stage in scrum_stages}
+                if stageId in scrum_stage_ids:
+                    await client.scrum_kanban_add_task(
+                        sprint_id=task_sprint_id,
+                        task_id=id,
+                        stage_id=stageId,
+                    )
+                    await client.task_update(task_id=id, stage_id=stageId)
+                    moved_with_scrum = True
+
+            if task_group_id and not moved_with_scrum:
                 try:
                     current_sprint = await _get_current_scrum_sprint(client, task_group_id)
                 except RuntimeError as e:
@@ -879,6 +892,7 @@ async def _task_update(
                             task_id=id,
                             stage_id=stageId,
                         )
+                        await client.task_update(task_id=id, stage_id=stageId)
                         moved_with_scrum = True
 
             if not moved_with_scrum:

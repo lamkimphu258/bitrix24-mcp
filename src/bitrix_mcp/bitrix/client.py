@@ -73,6 +73,7 @@ class Bitrix24Client:
         "RESPONSIBLE_ID",
         "GROUP_ID",
         "STAGE_ID",
+        "SPRINT_ID",
         "CREATED_BY",
         "STATUS",
         "DEADLINE",

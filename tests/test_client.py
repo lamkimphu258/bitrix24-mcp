@@ -146,6 +146,7 @@ class TestTaskGet:
         assert task.description == "Any new sign up user, send welcome email."
         assert task.responsible_id == "7"
         assert task.stage_id == "11"
+        assert task.sprint_id == "5"
 
     @pytest.mark.asyncio
     async def test_task_get_webdav_files_false_is_normalized(
@@ -161,6 +162,7 @@ class TestTaskGet:
                     "responsibleId": "7",
                     "groupId": "5",
                     "stageId": "11",
+                    "sprintId": "5",
                     "createdBy": "1",
                     "status": "2",
                     "deadline": None,

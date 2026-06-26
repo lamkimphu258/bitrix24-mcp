@@ -57,6 +57,7 @@ def sample_task_get_response() -> dict:
                 "responsibleId": "7",
                 "groupId": "5",
                 "stageId": "11",
+                "sprintId": "5",
                 "createdBy": "1",
                 "status": "2",
                 "deadline": None,

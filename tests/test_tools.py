@@ -183,6 +183,7 @@ class TestTaskGet:
         assert result["responsibleId"] == 7
         assert result["groupId"] == 5
         assert result["stageId"] == 11
+        assert result["sprintId"] == 5
         assert result["status"] == "pending"
         assert result["priority"] == "medium"
         assert result["attachmentFileIds"] == [1065, 1077]
@@ -195,6 +196,7 @@ class TestTaskGet:
         request = mock_bitrix_api.calls[0].request
         body = json.loads(request.content)
         assert "STAGE_ID" in body["select"]
+        assert "SPRINT_ID" in body["select"]
 
     @pytest.mark.asyncio
     async def test_task_get_webdav_files_false_returns_empty_list(
@@ -1289,6 +1291,7 @@ class TestTaskUpdate:
                     "responsibleId": "7",
                     "groupId": "5",
                     "stageId": "3037",
+                    "sprintId": "5",
                     "createdBy": "1",
                     "status": "2",
                 }
@@ -1302,23 +1305,11 @@ class TestTaskUpdate:
                     "responsibleId": "7",
                     "groupId": "5",
                     "stageId": "3041",
+                    "sprintId": "5",
                     "createdBy": "1",
                     "status": "2",
                 }
             }
-        }
-        sprint_response = {
-            "result": [
-                {
-                    "id": 5,
-                    "groupId": 5,
-                    "entityType": "sprint",
-                    "name": "Sprint 5",
-                    "dateStart": "2025-12-01T00:00:00+00:00",
-                    "dateEnd": "2025-12-31T23:59:59+00:00",
-                    "status": "active",
-                }
-            ]
         }
         stages_response = {
             "result": [
@@ -1333,22 +1324,19 @@ class TestTaskUpdate:
                 Response(200, json=task_after),
             ]
         )
-        mock_bitrix_api.post("tasks.api.scrum.sprint.list").mock(
-            return_value=Response(200, json=sprint_response)
-        )
         mock_bitrix_api.post("tasks.api.scrum.kanban.getStages").mock(
             return_value=Response(200, json=stages_response)
         )
         mock_bitrix_api.post("tasks.api.scrum.kanban.addTask").mock(
             return_value=Response(200, json={"result": True})
         )
+        mock_bitrix_api.post("tasks.task.update").mock(
+            return_value=Response(200, json={"result": True})
+        )
 
         result = await _task_update(id=456, stageId=3041)
 
         assert result == {"id": 456, "updated": True}
-        assert not any(
-            call.request.url.path.endswith("tasks.task.update") for call in mock_bitrix_api.calls
-        )
 
         import json
 
@@ -1357,6 +1345,82 @@ class TestTaskUpdate:
         )
         body = json.loads(move_call.request.content)
         assert body == {"sprintId": 5, "taskId": 456, "stageId": 3041}
+        update_call = next(
+            call
+            for call in mock_bitrix_api.calls
+            if call.request.url.path.endswith("tasks.task.update")
+        )
+        update_body = json.loads(update_call.request.content)
+        assert update_body == {"taskId": 456, "fields": {"STAGE_ID": 3041}}
+
+    @pytest.mark.asyncio
+    async def test_task_update_stage_id_prefers_task_sprint(self, setup_client, mock_bitrix_api):
+        """task_update should move Scrum tasks inside their existing sprint when available."""
+        task_before = {
+            "result": {
+                "task": {
+                    "id": "456",
+                    "title": "Move me",
+                    "responsibleId": "7",
+                    "groupId": "5",
+                    "stageId": "3037",
+                    "sprintId": "4",
+                    "createdBy": "1",
+                    "status": "2",
+                }
+            }
+        }
+        task_after = {
+            "result": {
+                "task": {
+                    "id": "456",
+                    "title": "Move me",
+                    "responsibleId": "7",
+                    "groupId": "5",
+                    "stageId": "3041",
+                    "sprintId": "4",
+                    "createdBy": "1",
+                    "status": "2",
+                }
+            }
+        }
+        stages_response = {
+            "result": [
+                {"id": "3037", "name": "To Do", "sort": "100", "sprintId": "4"},
+                {"id": "3041", "name": "Done", "sort": "300", "sprintId": "4"},
+            ]
+        }
+        mock_bitrix_api.post("tasks.task.get").mock(
+            side_effect=[
+                Response(200, json=task_before),
+                Response(200, json=task_after),
+            ]
+        )
+        mock_bitrix_api.post("tasks.api.scrum.kanban.getStages").mock(
+            return_value=Response(200, json=stages_response)
+        )
+        mock_bitrix_api.post("tasks.api.scrum.kanban.addTask").mock(
+            return_value=Response(200, json={"result": True})
+        )
+        mock_bitrix_api.post("tasks.task.update").mock(
+            return_value=Response(200, json={"result": True})
+        )
+
+        result = await _task_update(id=456, stageId=3041)
+
+        assert result == {"id": 456, "updated": True}
+
+        import json
+
+        assert not any(
+            call.request.url.path.endswith("tasks.api.scrum.sprint.list")
+            for call in mock_bitrix_api.calls
+        )
+        move_call = next(
+            call for call in mock_bitrix_api.calls if call.request.url.path.endswith("addTask")
+        )
+        body = json.loads(move_call.request.content)
+        assert body == {"sprintId": 4, "taskId": 456, "stageId": 3041}
 
     @pytest.mark.asyncio
     async def test_task_update_stage_id_uses_task_stage_move(
