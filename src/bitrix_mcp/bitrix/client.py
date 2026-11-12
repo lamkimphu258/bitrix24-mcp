@@ -12,6 +12,10 @@ from pydantic import ValidationError
 
 from .types import (
     BitrixAPIError,
+    BitrixChat,
+    BitrixChatFile,
+    BitrixChatMessage,
+    BitrixChatUser,
     BitrixConnectionError,
     BitrixDeal,
     BitrixGroup,
@@ -80,6 +84,7 @@ class Bitrix24Client:
         "PARENT_ID",
         "PRIORITY",
         "UF_TASK_WEBDAV_FILES",
+        "CHAT_ID",
     ]
 
     def __init__(self, webhook_url: str | None = None):
@@ -166,18 +171,19 @@ class Bitrix24Client:
 
         try:
             response = await self._client.post(url, json=params or {})
-            response.raise_for_status()
         except httpx.ConnectError as e:
             raise BitrixConnectionError(f"Failed to connect to Bitrix24: {e}")
         except httpx.TimeoutException as e:
             raise BitrixConnectionError(f"Request to Bitrix24 timed out: {e}")
-        except httpx.HTTPStatusError as e:
-            raise BitrixAPIError(
-                f"HTTP error from Bitrix24: {e.response.status_code}",
-                error_code=str(e.response.status_code),
-            )
 
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise BitrixAPIError(
+                "Unexpected response format from Bitrix24",
+                error_code="UNEXPECTED_RESPONSE",
+            ) from e
+
         if not isinstance(data, dict):
             raise BitrixAPIError(
                 "Unexpected response format from Bitrix24",
@@ -186,10 +192,28 @@ class Bitrix24Client:
 
         # Check for API-level errors
         if "error" in data:
+            error_code = data["error"]
+            error_description = data.get("error_description")
+            if (
+                isinstance(error_code, bool)
+                or not isinstance(error_code, (str, int))
+                or (error_description is not None and not isinstance(error_description, str))
+            ):
+                raise BitrixAPIError(
+                    "Unexpected response format from Bitrix24",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+            description = error_description or str(error_code)
             raise BitrixAPIError(
-                f"Bitrix24 API error: {data.get('error_description', data['error'])}",
-                error_code=data.get("error"),
-                error_description=data.get("error_description"),
+                f"Bitrix24 API error: {description}",
+                error_code=str(error_code),
+                error_description=error_description,
+            )
+
+        if not response.is_success:
+            raise BitrixAPIError(
+                f"HTTP error from Bitrix24: {response.status_code}",
+                error_code=str(response.status_code),
             )
 
         return data
@@ -210,6 +234,89 @@ class Bitrix24Client:
         """
         data = await self._request_raw(method, params)
         return data.get("result", {})
+
+    def _rest_v3_url(self, method: str) -> str:
+        """Build a REST 3.0 method URL from an inbound webhook URL."""
+        parsed = urlparse(self.webhook_url)
+        path_parts = [part for part in parsed.path.split("/") if part]
+        if len(path_parts) != 3 or path_parts[0] != "rest":
+            raise BitrixAPIError(
+                "Cannot derive REST 3.0 URL from webhook URL",
+                error_code="INVALID_WEBHOOK_URL",
+            )
+        user_id, webhook_code = path_parts[1:]
+        return f"{parsed.scheme}://{parsed.netloc}/rest/api/{user_id}/{webhook_code}/{method}"
+
+    async def _request_v3(
+        self, method: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Make a REST 3.0 request and return its result object."""
+        await self._rate_limiter.acquire()
+        url = self._rest_v3_url(method)
+        logger.debug(f"Bitrix24 REST 3.0 request: {method} with params: {params}")
+
+        try:
+            response = await self._client.post(url, json=params or {})
+        except httpx.ConnectError as e:
+            raise BitrixConnectionError(f"Failed to connect to Bitrix24: {e}")
+        except httpx.TimeoutException as e:
+            raise BitrixConnectionError(f"Request to Bitrix24 timed out: {e}")
+
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise BitrixAPIError(
+                "Unexpected response format from Bitrix24",
+                error_code="UNEXPECTED_RESPONSE",
+            ) from e
+
+        if not isinstance(data, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from Bitrix24",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        error = data.get("error")
+        if isinstance(error, dict):
+            code = str(error.get("code", response.status_code))
+            message = str(error.get("message", code))
+            validation_details: list[str] = []
+            validation = error.get("validation")
+            if isinstance(validation, list):
+                for item in validation:
+                    if not isinstance(item, dict):
+                        continue
+                    field = item.get("field")
+                    detail = item.get("message")
+                    if isinstance(field, str) and isinstance(detail, str):
+                        validation_details.append(f"{field}: {detail}")
+            if validation_details:
+                message = f"{message} ({'; '.join(validation_details)})"
+            raise BitrixAPIError(
+                f"Bitrix24 API error: {message}",
+                error_code=code,
+                error_description=message,
+            )
+        if error is not None:
+            description = str(data.get("error_description", error))
+            raise BitrixAPIError(
+                f"Bitrix24 API error: {description}",
+                error_code=str(error),
+                error_description=description,
+            )
+        if not response.is_success:
+            raise BitrixAPIError(
+                f"HTTP error from Bitrix24: {response.status_code}",
+                error_code=str(response.status_code),
+            )
+
+        result = data.get("result")
+        if not isinstance(result, dict):
+            raise BitrixAPIError(
+                f"Unexpected response format from {method}",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+        return result
 
     async def task_list(
         self,
@@ -370,6 +477,216 @@ class Bitrix24Client:
             raise BitrixAPIError(f"Task {task_id} not found", error_code="TASK_NOT_FOUND")
 
         return BitrixTask.model_validate(task_data)
+
+    @staticmethod
+    def _page_metadata(data: dict[str, Any], *, count: int) -> dict[str, int | None]:
+        """Normalize total and next metadata from a legacy list response."""
+        try:
+            total = int(data["total"]) if data.get("total") is not None else count
+            next_offset = int(data["next"]) if data.get("next") is not None else None
+        except (TypeError, ValueError) as e:
+            raise BitrixAPIError(
+                "Unexpected pagination data from Bitrix24",
+                error_code="UNEXPECTED_RESPONSE",
+            ) from e
+        return {"total": total, "nextOffset": next_offset}
+
+    async def chat_search(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        chat_offset: int = 0,
+        user_offset: int = 0,
+    ) -> dict[str, Any]:
+        """Search accessible chats and direct-message candidates independently."""
+        chat_data = await self._request_raw(
+            "im.search.chat.list",
+            {"FIND": query, "OFFSET": chat_offset, "LIMIT": limit},
+        )
+        user_data = await self._request_raw(
+            "im.search.user.list",
+            {"FIND": query, "BUSINESS": "N", "OFFSET": user_offset, "LIMIT": limit},
+        )
+
+        chats_raw = chat_data.get("result")
+        users_raw = user_data.get("result")
+        if not isinstance(chats_raw, list) or not isinstance(users_raw, (dict, list)):
+            raise BitrixAPIError(
+                "Unexpected response format from chat search",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        user_items = list(users_raw.values()) if isinstance(users_raw, dict) else users_raw
+        try:
+            chats = [BitrixChat.model_validate(item) for item in chats_raw]
+            users = [BitrixChatUser.model_validate(item) for item in user_items]
+        except ValidationError as e:
+            raise BitrixAPIError(
+                "Unexpected response format from chat search",
+                error_code="UNEXPECTED_RESPONSE",
+            ) from e
+
+        chat_page = self._page_metadata(chat_data, count=len(chats))
+        user_page = self._page_metadata(user_data, count=len(users))
+        return {
+            "groupChats": [chat.to_result() for chat in chats],
+            "groupChatsTotal": chat_page["total"],
+            "groupChatsNextOffset": chat_page["nextOffset"],
+            "directChats": [user.to_search_result() for user in users],
+            "directChatsTotal": user_page["total"],
+            "directChatsNextOffset": user_page["nextOffset"],
+        }
+
+    async def chat_get(
+        self,
+        dialog_id: str,
+        *,
+        limit: int = 20,
+        last_id: int | None = None,
+        first_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Get chat metadata and one cursor-based page of messages."""
+        dialog_result = await self._request("im.dialog.get", {"DIALOG_ID": dialog_id})
+        message_params: dict[str, Any] = {"DIALOG_ID": dialog_id, "LIMIT": limit}
+        if last_id is not None:
+            message_params["LAST_ID"] = last_id
+        if first_id is not None:
+            message_params["FIRST_ID"] = first_id
+        message_result = await self._request("im.dialog.messages.get", message_params)
+
+        if not isinstance(dialog_result, dict) or not isinstance(message_result, dict):
+            raise BitrixAPIError(
+                "Unexpected response format from chat history",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+        messages_raw = message_result.get("messages")
+        users_raw = message_result.get("users", [])
+        files_raw = message_result.get("files", [])
+        if not all(isinstance(value, list) for value in (messages_raw, users_raw, files_raw)):
+            raise BitrixAPIError(
+                "Unexpected response format from chat history",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+
+        try:
+            dialog = BitrixChat.model_validate(dialog_result)
+            messages = [BitrixChatMessage.model_validate(item) for item in messages_raw]
+            users = [BitrixChatUser.model_validate(item) for item in users_raw]
+            files = [BitrixChatFile.model_validate(item) for item in files_raw]
+        except ValidationError as e:
+            raise BitrixAPIError(
+                "Unexpected response format from chat history",
+                error_code="UNEXPECTED_RESPONSE",
+            ) from e
+
+        users_by_id = {user.id: user for user in users}
+        files_by_id = {file.id: file for file in files}
+        normalized_messages: list[dict[str, Any]] = []
+        for message in messages:
+            params = message.params if isinstance(message.params, dict) else {}
+            file_ids_raw = params.get("FILE_ID", [])
+            if not isinstance(file_ids_raw, list):
+                raise BitrixAPIError(
+                    "Unexpected attachment data from chat history",
+                    error_code="UNEXPECTED_RESPONSE",
+                )
+            file_ids: list[int] = []
+            for file_id in file_ids_raw:
+                if isinstance(file_id, bool):
+                    raise BitrixAPIError(
+                        "Unexpected attachment data from chat history",
+                        error_code="UNEXPECTED_RESPONSE",
+                    )
+                if isinstance(file_id, int):
+                    normalized_file_id = file_id
+                elif isinstance(file_id, str) and file_id.isdigit():
+                    normalized_file_id = int(file_id)
+                else:
+                    raise BitrixAPIError(
+                        "Unexpected attachment data from chat history",
+                        error_code="UNEXPECTED_RESPONSE",
+                    )
+                if normalized_file_id <= 0:
+                    raise BitrixAPIError(
+                        "Unexpected attachment data from chat history",
+                        error_code="UNEXPECTED_RESPONSE",
+                    )
+                file_ids.append(normalized_file_id)
+            author = users_by_id.get(message.author_id)
+            normalized_messages.append(
+                {
+                    "messageId": message.id,
+                    "chatId": message.chat_id,
+                    "author": {
+                        "id": message.author_id,
+                        "name": author.name if author else None,
+                    },
+                    "date": message.date,
+                    "text": message.text,
+                    "unread": message.unread,
+                    "attachments": [
+                        files_by_id[file_id].to_result()
+                        for file_id in file_ids
+                        if file_id in files_by_id
+                    ],
+                }
+            )
+
+        message_ids = [message.id for message in messages]
+        return {
+            "dialog": dialog.to_result(dialog_id=dialog_id),
+            "messages": normalized_messages,
+            "olderCursor": min(message_ids) if message_ids else None,
+            "newerCursor": max(message_ids) if message_ids else None,
+        }
+
+    async def chat_send(
+        self,
+        dialog_id: str,
+        message: str,
+        *,
+        reply_to_message_id: int | None = None,
+    ) -> int:
+        """Send a text message to an IM dialog."""
+        params: dict[str, Any] = {"DIALOG_ID": dialog_id, "MESSAGE": message}
+        if reply_to_message_id is not None:
+            params["REPLY_ID"] = reply_to_message_id
+        result = await self._request("im.message.add", params)
+        if isinstance(result, bool):
+            raise BitrixAPIError(
+                "Unexpected response format from im.message.add",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+        if isinstance(result, int):
+            message_id = result
+        elif isinstance(result, str) and result.isdigit():
+            message_id = int(result)
+        else:
+            raise BitrixAPIError(
+                "Unexpected response format from im.message.add",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+        if message_id <= 0:
+            raise BitrixAPIError(
+                "Unexpected response format from im.message.add",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+        return message_id
+
+    async def task_chat_send(self, task_id: int, message: str) -> bool:
+        """Send a text message to a task chat through REST 3.0."""
+        result = await self._request_v3(
+            "tasks.task.chat.message.send",
+            {"fields": {"taskId": task_id, "text": message}},
+        )
+        sent = result.get("result")
+        if not isinstance(sent, bool):
+            raise BitrixAPIError(
+                "Unexpected response format from tasks.task.chat.message.send",
+                error_code="UNEXPECTED_RESPONSE",
+            )
+        return sent
 
     async def crm_deal_get(self, deal_id: int) -> BitrixDeal:
         """Get a single CRM deal by ID (crm.deal.get).

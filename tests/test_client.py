@@ -73,6 +73,327 @@ class TestRateLimiter:
         assert limiter.rate == 5.0
 
 
+class TestChatClient:
+    """Tests for regular-chat and task-chat client methods."""
+
+    @pytest.mark.asyncio
+    async def test_chat_search_has_independent_pagination(
+        self,
+        mock_webhook_url,
+        mock_bitrix_api,
+        sample_chat_search_response,
+        sample_chat_user_search_response,
+    ):
+        """Chat and user search pages should preserve separate offsets and metadata."""
+        mock_bitrix_api.post("im.search.chat.list").mock(
+            return_value=Response(200, json=sample_chat_search_response)
+        )
+        mock_bitrix_api.post("im.search.user.list").mock(
+            return_value=Response(200, json=sample_chat_user_search_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.chat_search("release", limit=5, chat_offset=10, user_offset=20)
+
+        assert result["groupChats"][0]["dialogId"] == "chat1439"
+        assert result["groupChatsTotal"] == 12
+        assert result["groupChatsNextOffset"] == 15
+        assert result["directChats"][0]["dialogId"] == "103"
+        assert result["directChatsTotal"] == 3
+        assert result["directChatsNextOffset"] == 25
+
+        import json
+
+        chat_body = json.loads(mock_bitrix_api.calls[0].request.content)
+        user_body = json.loads(mock_bitrix_api.calls[1].request.content)
+        assert chat_body == {"FIND": "release", "OFFSET": 10, "LIMIT": 5}
+        assert user_body == {
+            "FIND": "release",
+            "BUSINESS": "N",
+            "OFFSET": 20,
+            "LIMIT": 5,
+        }
+
+    @pytest.mark.asyncio
+    async def test_chat_get_normalizes_authors_attachments_and_cursors(
+        self,
+        mock_webhook_url,
+        mock_bitrix_api,
+        sample_chat_dialog_response,
+        sample_chat_messages_response,
+    ):
+        """History should expose normalized authors, files, and cursor IDs."""
+        mock_bitrix_api.post("im.dialog.get").mock(
+            return_value=Response(200, json=sample_chat_dialog_response)
+        )
+        mock_bitrix_api.post("im.dialog.messages.get").mock(
+            return_value=Response(200, json=sample_chat_messages_response)
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.chat_get("chat1439", limit=10, last_id=84900)
+
+        assert result["dialog"]["chatId"] == 1439
+        assert result["messages"][0]["author"] == {"id": 103, "name": "Emily Smith"}
+        assert result["messages"][0]["attachments"][0]["id"] == 5255
+        assert result["olderCursor"] == 84875
+        assert result["newerCursor"] == 84877
+
+        import json
+
+        body = json.loads(mock_bitrix_api.calls[1].request.content)
+        assert body == {"DIALOG_ID": "chat1439", "LIMIT": 10, "LAST_ID": 84900}
+
+    @pytest.mark.asyncio
+    async def test_chat_send_with_reply(self, mock_webhook_url, mock_bitrix_api):
+        """Sending a reply should pass REPLY_ID and return the actual message ID."""
+        mock_bitrix_api.post("im.message.add").mock(
+            return_value=Response(200, json={"result": 84901})
+        )
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            message_id = await client.chat_send("chat1439", "Approved", reply_to_message_id=84877)
+        assert message_id == 84901
+
+        import json
+
+        assert json.loads(mock_bitrix_api.calls[0].request.content) == {
+            "DIALOG_ID": "chat1439",
+            "MESSAGE": "Approved",
+            "REPLY_ID": 84877,
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("invalid_result", [False, True, 0, -1, 1.5, "1.5", {}])
+    async def test_chat_send_rejects_invalid_message_ids(
+        self, mock_webhook_url, mock_bitrix_api, invalid_result
+    ):
+        """Message IDs must be positive integers and bools must not pass as integers."""
+        mock_bitrix_api.post("im.message.add").mock(
+            return_value=Response(200, json={"result": invalid_result})
+        )
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected response format") as error:
+                await client.chat_send("103", "Hello")
+        assert error.value.error_code == "UNEXPECTED_RESPONSE"
+
+    @pytest.mark.asyncio
+    async def test_chat_get_matches_string_attachment_id(
+        self,
+        mock_webhook_url,
+        mock_bitrix_api,
+        sample_chat_dialog_response,
+        sample_chat_messages_response,
+    ):
+        """A numeric-string FILE_ID should match the numeric file record ID."""
+        sample_chat_messages_response["result"]["messages"][0]["params"]["FILE_ID"] = ["5255"]
+        mock_bitrix_api.post("im.dialog.get").mock(
+            return_value=Response(200, json=sample_chat_dialog_response)
+        )
+        mock_bitrix_api.post("im.dialog.messages.get").mock(
+            return_value=Response(200, json=sample_chat_messages_response)
+        )
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.chat_get("chat1439")
+        assert result["messages"][0]["attachments"][0]["id"] == 5255
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("invalid_file_ids", ["5255", [False], [0], [-1], [1.5], [{}]])
+    async def test_chat_get_rejects_malformed_attachment_ids(
+        self,
+        mock_webhook_url,
+        mock_bitrix_api,
+        sample_chat_dialog_response,
+        sample_chat_messages_response,
+        invalid_file_ids,
+    ):
+        """Malformed attachment references should become a friendly API error."""
+        sample_chat_messages_response["result"]["messages"][0]["params"]["FILE_ID"] = (
+            invalid_file_ids
+        )
+        mock_bitrix_api.post("im.dialog.get").mock(
+            return_value=Response(200, json=sample_chat_dialog_response)
+        )
+        mock_bitrix_api.post("im.dialog.messages.get").mock(
+            return_value=Response(200, json=sample_chat_messages_response)
+        )
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected attachment data") as error:
+                await client.chat_get("chat1439")
+        assert error.value.error_code == "UNEXPECTED_RESPONSE"
+
+    @pytest.mark.asyncio
+    async def test_chat_get_handles_system_attachment_only_and_empty_history(
+        self, mock_webhook_url, mock_bitrix_api, sample_chat_dialog_response
+    ):
+        """System and attachment-only messages may have no author or text."""
+        messages = {
+            "result": {
+                "chat_id": 1439,
+                "messages": [
+                    {
+                        "id": 2,
+                        "chat_id": 1439,
+                        "author_id": 0,
+                        "date": "2026-03-04T09:43:26+03:00",
+                        "text": "",
+                        "unread": False,
+                        "params": {"FILE_ID": [42]},
+                    },
+                    {
+                        "id": 1,
+                        "chat_id": 1439,
+                        "author_id": 0,
+                        "date": "2026-03-04T09:42:26+03:00",
+                        "text": "A system event",
+                        "unread": False,
+                        "params": [],
+                    },
+                ],
+                "users": [],
+                "files": [{"id": 42, "name": "only.txt"}],
+            }
+        }
+        mock_bitrix_api.post("im.dialog.get").mock(
+            return_value=Response(200, json=sample_chat_dialog_response)
+        )
+        messages_route = mock_bitrix_api.post("im.dialog.messages.get").mock(
+            side_effect=[
+                Response(200, json=messages),
+                Response(
+                    200,
+                    json={"result": {"chat_id": 1439, "messages": [], "users": [], "files": []}},
+                ),
+            ]
+        )
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            result = await client.chat_get("chat1439")
+            empty = await client.chat_get("chat1439")
+        assert result["messages"][0]["author"] == {"id": 0, "name": None}
+        assert result["messages"][0]["attachments"][0]["id"] == 42
+        assert result["messages"][1]["attachments"] == []
+        assert empty["messages"] == []
+        assert empty["olderCursor"] is None
+        assert messages_route.called
+
+    @pytest.mark.asyncio
+    async def test_task_chat_send_uses_rest_v3(self, mock_webhook_url, mock_bitrix_api):
+        """Task-chat sending should use the REST 3.0 route and fields envelope."""
+        mock_bitrix_api.post(
+            "https://test.bitrix24.com/rest/api/1/test-token/tasks.task.chat.message.send"
+        ).mock(return_value=Response(200, json={"result": {"result": True}}))
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            sent = await client.task_chat_send(456, "Deployment complete")
+
+        assert sent is True
+        import json
+
+        assert json.loads(mock_bitrix_api.calls[0].request.content) == {
+            "fields": {"taskId": 456, "text": "Deployment complete"}
+        }
+
+    @pytest.mark.asyncio
+    async def test_task_chat_send_surfaces_nested_rest_v3_error(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """REST 3.0 nested permission errors should become BitrixAPIError."""
+        mock_bitrix_api.post(
+            "https://test.bitrix24.com/rest/api/1/test-token/tasks.task.chat.message.send"
+        ).mock(
+            return_value=Response(
+                403,
+                json={
+                    "error": {
+                        "code": "BITRIX_REST_V3_EXCEPTION_ACCESSDENIEDEXCEPTION",
+                        "message": "Access denied",
+                    }
+                },
+            )
+        )
+
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Access denied"):
+                await client.task_chat_send(456, "Blocked")
+
+    @pytest.mark.asyncio
+    async def test_rest_v3_validation_error_includes_valid_field_details(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """REST 3.0 validation field details should be included when well formed."""
+        mock_bitrix_api.post(
+            "https://test.bitrix24.com/rest/api/1/test-token/tasks.task.chat.message.send"
+        ).mock(
+            return_value=Response(
+                400,
+                json={
+                    "error": {
+                        "code": "BITRIX_REST_V3_EXCEPTION_VALIDATION_DTOVALIDATIONEXCEPTION",
+                        "message": "Error during object validation",
+                        "validation": [
+                            {"field": "text", "message": "The field is required"},
+                            {"field": 12, "message": "ignored"},
+                            "ignored",
+                        ],
+                    }
+                },
+            )
+        )
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="text: The field is required"):
+                await client.task_chat_send(456, "Message")
+
+    @pytest.mark.asyncio
+    async def test_rest_v3_non_json_response_is_wrapped(self, mock_webhook_url, mock_bitrix_api):
+        """Non-JSON REST 3.0 responses should become UNEXPECTED_RESPONSE."""
+        mock_bitrix_api.post(
+            "https://test.bitrix24.com/rest/api/1/test-token/tasks.task.chat.message.send"
+        ).mock(return_value=Response(502, text="bad gateway"))
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected response format") as error:
+                await client.task_chat_send(456, "Message")
+        assert error.value.error_code == "UNEXPECTED_RESPONSE"
+
+    @pytest.mark.asyncio
+    async def test_legacy_non_2xx_preserves_structured_error(
+        self, mock_webhook_url, mock_bitrix_api
+    ):
+        """Legacy structured errors should survive non-2xx HTTP status handling."""
+        mock_bitrix_api.post("im.search.chat.list").mock(
+            return_value=Response(
+                403,
+                json={"error": "ACCESS_DENIED", "error_description": "Chat access denied"},
+            )
+        )
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Chat access denied") as error:
+                await client.chat_search("release")
+        assert error.value.error_code == "ACCESS_DENIED"
+        assert error.value.error_description == "Chat access denied"
+
+    @pytest.mark.asyncio
+    async def test_legacy_non_json_response_is_wrapped(self, mock_webhook_url, mock_bitrix_api):
+        """Non-JSON legacy responses should become UNEXPECTED_RESPONSE."""
+        mock_bitrix_api.post("im.search.chat.list").mock(
+            return_value=Response(502, text="bad gateway")
+        )
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected response format") as error:
+                await client.chat_search("release")
+        assert error.value.error_code == "UNEXPECTED_RESPONSE"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("payload", [[], {"error": {"code": "BROKEN"}}])
+    async def test_legacy_malformed_payload_is_wrapped(
+        self, mock_webhook_url, mock_bitrix_api, payload
+    ):
+        """Non-object and malformed legacy error payloads should be wrapped."""
+        mock_bitrix_api.post("im.search.chat.list").mock(return_value=Response(400, json=payload))
+        async with Bitrix24Client(webhook_url=mock_webhook_url) as client:
+            with pytest.raises(BitrixAPIError, match="Unexpected response format") as error:
+                await client.chat_search("release")
+        assert error.value.error_code == "UNEXPECTED_RESPONSE"
+
+
 class TestTaskList:
     """Tests for task_list method."""
 

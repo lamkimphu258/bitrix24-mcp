@@ -6,6 +6,7 @@ plan and break down tasks into subtasks in Bitrix24 Scrum.
 
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -66,6 +67,39 @@ def set_client(client: Bitrix24Client) -> None:
 # Define tool functions separately so they can be called directly in tests
 # and then register them with @mcp.tool decorator
 
+_DIALOG_ID_PATTERN = re.compile(r"^(?:chat|sg)?[1-9]\d*$")
+
+
+def _normalize_dialog_id(dialog_id: str | int) -> str:
+    """Validate and normalize a Bitrix24 IM dialog identifier."""
+    normalized = str(dialog_id).strip()
+    if not _DIALOG_ID_PATTERN.fullmatch(normalized):
+        raise RuntimeError("dialogId must be a positive numeric ID, chatNN, or sgNN.")
+    return normalized
+
+
+def _validate_chat_page(
+    *, limit: int, last_id: int | None = None, first_id: int | None = None
+) -> None:
+    """Validate chat history pagination inputs before making API calls."""
+    if not 1 <= limit <= 50:
+        raise RuntimeError("limit must be between 1 and 50.")
+    if last_id is not None and first_id is not None:
+        raise RuntimeError("Use only one cursor: lastId or firstId.")
+    if last_id is not None and last_id <= 0:
+        raise RuntimeError("lastId must be greater than 0.")
+    if first_id is not None and first_id <= 0:
+        raise RuntimeError("firstId must be greater than 0.")
+
+
+def _validate_chat_message(message: str) -> str:
+    """Validate text accepted by Bitrix24 message methods."""
+    if not message.strip():
+        raise RuntimeError("message must not be empty.")
+    if len(message) > 20_000:
+        raise RuntimeError("message must not exceed 20000 characters.")
+    return message
+
 
 async def _task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
     """Search for tasks by title.
@@ -91,6 +125,141 @@ async def _task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
         raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
     except BitrixAPIError as e:
         logger.error(f"API error during task search: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _chat_search(
+    query: str,
+    limit: int = 10,
+    chatOffset: int = 0,
+    userOffset: int = 0,
+) -> dict[str, Any]:
+    """Search group chats and direct-message candidates by remembered words."""
+    normalized_query = query.strip()
+    if len(normalized_query) < 2:
+        raise RuntimeError("query must contain at least 2 characters.")
+    if not 1 <= limit <= 50:
+        raise RuntimeError("limit must be between 1 and 50.")
+    if chatOffset < 0 or userOffset < 0:
+        raise RuntimeError("chatOffset and userOffset must be 0 or greater.")
+
+    client = get_client()
+    try:
+        return await client.chat_search(
+            normalized_query,
+            limit=limit,
+            chat_offset=chatOffset,
+            user_offset=userOffset,
+        )
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during chat search: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during chat search: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _chat_get(
+    dialogId: str | int,
+    limit: int = 20,
+    lastId: int | None = None,
+    firstId: int | None = None,
+) -> dict[str, Any]:
+    """Read metadata and messages from a regular Bitrix24 chat."""
+    dialog_id = _normalize_dialog_id(dialogId)
+    _validate_chat_page(limit=limit, last_id=lastId, first_id=firstId)
+    client = get_client()
+    try:
+        return await client.chat_get(
+            dialog_id,
+            limit=limit,
+            last_id=lastId,
+            first_id=firstId,
+        )
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during chat get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during chat get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _chat_send(
+    dialogId: str | int,
+    message: str,
+    replyToMessageId: int | None = None,
+) -> dict[str, Any]:
+    """Send a text message or reply to a regular Bitrix24 chat."""
+    dialog_id = _normalize_dialog_id(dialogId)
+    message = _validate_chat_message(message)
+    if replyToMessageId is not None and replyToMessageId <= 0:
+        raise RuntimeError("replyToMessageId must be greater than 0.")
+    client = get_client()
+    try:
+        message_id = await client.chat_send(
+            dialog_id,
+            message,
+            reply_to_message_id=replyToMessageId,
+        )
+        return {"dialogId": dialog_id, "messageId": message_id, "sent": True}
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during chat send: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during chat send: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _task_chat_get(
+    id: int,
+    limit: int = 20,
+    lastId: int | None = None,
+    firstId: int | None = None,
+) -> dict[str, Any]:
+    """Resolve a task's chat and read one page of its messages."""
+    if id <= 0:
+        raise RuntimeError("Task id must be greater than 0.")
+    _validate_chat_page(limit=limit, last_id=lastId, first_id=firstId)
+    client = get_client()
+    try:
+        task = await client.task_get(task_id=id)
+        if not task.chat_id:
+            raise BitrixAPIError(
+                f"Task {id} does not have an accessible chat",
+                error_code="TASK_CHAT_NOT_FOUND",
+            )
+        dialog_id = _normalize_dialog_id(task.chat_id)
+        if dialog_id.isdigit():
+            dialog_id = f"chat{dialog_id}"
+        history = await client.chat_get(
+            dialog_id,
+            limit=limit,
+            last_id=lastId,
+            first_id=firstId,
+        )
+        return {"taskId": id, **history}
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during task chat get: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during task chat get: {e}")
+        raise RuntimeError(f"Bitrix24 API error: {e}")
+
+
+async def _task_chat_send(id: int, message: str) -> dict[str, Any]:
+    """Send a text message to the chat attached to a task."""
+    if id <= 0:
+        raise RuntimeError("Task id must be greater than 0.")
+    message = _validate_chat_message(message)
+    client = get_client()
+    try:
+        sent = await client.task_chat_send(task_id=id, message=message)
+        return {"taskId": id, "sent": sent}
+    except BitrixConnectionError as e:
+        logger.error(f"Connection error during task chat send: {e}")
+        raise RuntimeError(f"Failed to connect to Bitrix24: {e}")
+    except BitrixAPIError as e:
+        logger.error(f"API error during task chat send: {e}")
         raise RuntimeError(f"Bitrix24 API error: {e}")
 
 
@@ -1448,6 +1617,73 @@ async def task_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
     """Search for tasks by title. Use this to find a task when user provides task name.
     Returns matching tasks with id, title, responsibleId, groupId, parentId, and status."""
     return await _task_search(query=query, limit=limit)
+
+
+@mcp.tool
+async def chat_search(
+    query: str,
+    limit: int = 10,
+    chatOffset: int = 0,
+    userOffset: int = 0,
+) -> dict[str, Any]:
+    """Search accessible chats by title/participant and users by name using word prefixes.
+
+    Direct-chat results can include users with whom no conversation exists yet. Group-chat and
+    direct-chat pagination use independent offsets.
+    """
+    return await _chat_search(
+        query=query,
+        limit=limit,
+        chatOffset=chatOffset,
+        userOffset=userOffset,
+    )
+
+
+@mcp.tool
+async def chat_get(
+    dialogId: str | int,
+    limit: int = 20,
+    lastId: int | None = None,
+    firstId: int | None = None,
+) -> dict[str, Any]:
+    """Read a regular chat using a numeric user ID, chatNN ID, or sgNN ID."""
+    return await _chat_get(
+        dialogId=dialogId,
+        limit=limit,
+        lastId=lastId,
+        firstId=firstId,
+    )
+
+
+@mcp.tool
+async def chat_send(
+    dialogId: str | int,
+    message: str,
+    replyToMessageId: int | None = None,
+) -> dict[str, Any]:
+    """Send a text message, optionally as a reply, to a regular chat."""
+    return await _chat_send(
+        dialogId=dialogId,
+        message=message,
+        replyToMessageId=replyToMessageId,
+    )
+
+
+@mcp.tool
+async def task_chat_get(
+    id: int,
+    limit: int = 20,
+    lastId: int | None = None,
+    firstId: int | None = None,
+) -> dict[str, Any]:
+    """Read the chat attached to a task, resolving its dialog ID automatically."""
+    return await _task_chat_get(id=id, limit=limit, lastId=lastId, firstId=firstId)
+
+
+@mcp.tool
+async def task_chat_send(id: int, message: str) -> dict[str, Any]:
+    """Send a text message to the chat attached to a task."""
+    return await _task_chat_send(id=id, message=message)
 
 
 @mcp.tool

@@ -65,6 +65,7 @@ class BitrixTask(BaseModel):
     deadline: str | None = None
     created_by: str | None = Field(default=None, alias="createdBy")
     attachment_file_ids: list[int] | None = Field(default=None, alias="ufTaskWebdavFiles")
+    chat_id: int | str | None = Field(default=None, alias="chatId")
 
     model_config = {"populate_by_name": True}
 
@@ -131,10 +132,101 @@ class BitrixTask(BaseModel):
             "deadline": self.deadline,
             "createdBy": int(self.created_by) if self.created_by else None,
             "attachmentFileIds": self.attachment_file_ids or [],
+            "chatId": int(self.chat_id) if self.chat_id else None,
         }
         if base_url:
             result["url"] = self.get_url(base_url)
         return result
+
+
+class BitrixChat(BaseModel):
+    """Chat metadata returned by Bitrix24 IM methods."""
+
+    id: int
+    name: str = ""
+    type: str | None = None
+    counter: int = 0
+    user_counter: int = 0
+    message_count: int = 0
+    entity_type: str | None = None
+    entity_id: str | None = None
+
+    model_config = {"extra": "ignore"}
+
+    def to_result(self, dialog_id: str | None = None) -> dict[str, Any]:
+        """Convert chat metadata to the MCP response format."""
+        return {
+            "dialogId": dialog_id or f"chat{self.id}",
+            "chatId": self.id,
+            "name": self.name,
+            "type": self.type,
+            "unreadCount": self.counter,
+            "memberCount": self.user_counter,
+            "messageCount": self.message_count,
+            "entityType": self.entity_type,
+            "entityId": self.entity_id,
+        }
+
+
+class BitrixChatUser(BaseModel):
+    """User returned by Bitrix24 IM search and message methods."""
+
+    id: int
+    name: str
+    first_name: str | None = None
+    last_name: str | None = None
+    work_position: str | None = None
+
+    model_config = {"extra": "ignore"}
+
+    def to_search_result(self) -> dict[str, Any]:
+        """Convert a user into a direct-chat search result."""
+        return {
+            "dialogId": str(self.id),
+            "userId": self.id,
+            "name": self.name,
+            "firstName": self.first_name,
+            "lastName": self.last_name,
+            "workPosition": self.work_position,
+        }
+
+
+class BitrixChatFile(BaseModel):
+    """File metadata returned alongside IM messages."""
+
+    id: int
+    type: str | None = None
+    name: str
+    size: int | None = None
+    author_id: int | None = Field(default=None, alias="authorId")
+    url_download: str | None = Field(default=None, alias="urlDownload")
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+    def to_result(self) -> dict[str, Any]:
+        """Convert file metadata to the MCP response format."""
+        return {
+            "id": self.id,
+            "type": self.type,
+            "name": self.name,
+            "size": self.size,
+            "authorId": self.author_id,
+            "downloadUrl": self.url_download,
+        }
+
+
+class BitrixChatMessage(BaseModel):
+    """Message returned by im.dialog.messages.get."""
+
+    id: int
+    chat_id: int
+    author_id: int
+    date: str
+    text: str
+    unread: bool = False
+    params: dict[str, Any] | list[Any] | None = None
+
+    model_config = {"extra": "ignore"}
 
 
 class BitrixDeal(BaseModel):

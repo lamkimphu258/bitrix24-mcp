@@ -6,7 +6,12 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list tasks, fetch task details (optionally with comments), list deal fields and deals, fetch deal details and product rows, add/update/delete deals, create/update tasks and subtasks, list epics and create/update Scrum tasks (epic/story points/backlog or sprint), fetch and filter Scrum backlog tasks in one call, and manage Kanban/My Planner columns (get stages, move/reorder tasks).
+Bitrix24 MCP equips AI assistants with tools to search users and workgroups, search/list
+tasks, search and use regular chats, read and send messages in task chats, fetch task details
+(optionally with legacy comments), list deal fields and deals, fetch deal details and product
+rows, add/update/delete deals, create/update tasks and subtasks, list epics and create/update
+Scrum tasks (epic/story points/backlog or sprint), fetch and filter Scrum backlog tasks in one
+call, and manage Kanban/My Planner columns (get stages, move/reorder tasks).
 
 ---
 
@@ -66,6 +71,8 @@ For local MCP desktop clients (Cursor/Claude/Codex), keep using `stdio` transpor
 Bitrix24 MCP provides tools for AI-assisted task planning:
 
 - Search tasks by title with partial matching.
+- Search regular chats by remembered title or participant words, then read or send messages.
+- Read and send messages in the chat attached to a task.
 - Get full task details including description for AI analysis.
 - Create subtasks under parent tasks automatically.
 - Manage CRM deals (list/get/products/add/update/delete).
@@ -82,7 +89,8 @@ Bitrix24 MCP requires Python 3.11+.
 1. Go to your Bitrix24 portal
 2. Navigate to **Developer resources** → **Other** → **Inbound webhook**
 3. Click **Add inbound webhook**
-4. Set permissions: `tasks` (Read and write tasks)
+4. Set permissions: `task` (existing task tools), `tasks` (REST 3.0 task-chat send), and
+   `im` (chat search and messages)
 5. Copy the webhook URL
 
 ### 2. Set Environment Variable
@@ -197,11 +205,81 @@ Returns matching tasks with `id`, `title`, `responsibleId`, `groupId`, `parentId
 Get detailed information about a task by ID. Returns title, description, assignee, and group.
 Also includes `attachmentFileIds` (from Bitrix24 `UF_TASK_WEBDAV_FILES`; empty list if none).
 Also includes `stageId` (Kanban stage ID, if the task is in a project with stages; otherwise `null`).
+Also includes `chatId` when Bitrix24 has attached a modern task chat.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | int | Yes | Task ID |
 | `includeComments` | bool | No | Include task comments (legacy API via `task.commentitem.getlist`) |
+
+### chat_search
+
+Search accessible group chats by title or participant name and find users for direct messages.
+Use this when the user remembers words from a chat name or participant. Bitrix24 uses indexed
+word-prefix matching rather than arbitrary message-content search. Direct-chat results can include
+users with whom the webhook user has not previously chatted.
+
+Group chats and direct-message candidates have independent pagination. The result includes
+`groupChats`, `groupChatsTotal`, `groupChatsNextOffset`, `directChats`, `directChatsTotal`, and
+`directChatsNextOffset`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | Yes | Search phrase, at least 2 characters |
+| `limit` | int | No | Results per result type, 1-50 (default: 10) |
+| `chatOffset` | int | No | Group-chat offset (default: 0) |
+| `userOffset` | int | No | Direct-user offset (default: 0) |
+
+### chat_get
+
+Read chat metadata and recent messages. Messages include IDs, author information, timestamps,
+text, unread state, and attachment metadata. Use one returned cursor at a time: `olderCursor` as
+the next `lastId`, or `newerCursor` as the next `firstId`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `dialogId` | string or int | Yes | Numeric direct-user ID, `chatNN`, or `sgNN` |
+| `limit` | int | No | Message limit, 1-50 (default: 20) |
+| `lastId` | int | No | Load messages older than this message ID |
+| `firstId` | int | No | Load messages newer than this message ID |
+
+### chat_send
+
+Send a text message to a regular chat. Returns the message ID assigned by Bitrix24.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `dialogId` | string or int | Yes | Numeric direct-user ID, `chatNN`, or `sgNN` |
+| `message` | string | Yes | Text message, up to 20,000 characters |
+| `replyToMessageId` | int | No | Message ID to reply to |
+
+### task_chat_get
+
+Read the modern chat attached to a task. The tool accepts a task ID, resolves its `chatId`, and
+returns the same normalized history and cursors as `chat_get`. Find the task first with
+`task_search` when only part of its title is known.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Task ID |
+| `limit` | int | No | Message limit, 1-50 (default: 20) |
+| `lastId` | int | No | Load messages older than this message ID |
+| `firstId` | int | No | Load messages newer than this message ID |
+
+### task_chat_send
+
+Send a text message to the modern chat attached to a task. Returns `taskId` and `sent`; the
+Bitrix24 method does not return a message ID.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | int | Yes | Task ID |
+| `message` | string | Yes | Text message, up to 20,000 characters |
+
+The existing task-comment support remains available for portals and task cards that use legacy
+comments. Chat tools do not create chats, manage members, upload files, edit or delete messages,
+monitor conversations, search message contents, or access Open Channels. All chat access follows
+the webhook user's membership and permissions.
 
 ### crm_deal_get
 

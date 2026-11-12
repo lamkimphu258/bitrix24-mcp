@@ -9,6 +9,9 @@ from httpx import Response
 
 from bitrix_mcp.bitrix.client import Bitrix24Client
 from bitrix_mcp.server import (
+    _chat_get,
+    _chat_search,
+    _chat_send,
     _crm_deal_add,
     _crm_deal_delete,
     _crm_deal_fields,
@@ -23,6 +26,8 @@ from bitrix_mcp.server import (
     _crm_lead_productrows_get,
     _crm_lead_update,
     _scrum_backlog_tasks,
+    _task_chat_get,
+    _task_chat_send,
     _task_create,
     _task_get,
     _task_search,
@@ -36,6 +41,78 @@ def setup_integration(mock_webhook_url, mock_bitrix_api):
     client = Bitrix24Client(webhook_url=mock_webhook_url)
     set_client(client)
     yield mock_bitrix_api
+
+
+class TestChatWorkflows:
+    """Test complete search, get, and send chat workflows."""
+
+    @pytest.mark.asyncio
+    async def test_regular_chat_search_get_send(
+        self,
+        setup_integration,
+        sample_chat_search_response,
+        sample_chat_user_search_response,
+        sample_chat_dialog_response,
+        sample_chat_messages_response,
+    ):
+        """A remembered chat word should lead to reading and sending a reply."""
+        mock_api = setup_integration
+        mock_api.post("im.search.chat.list").mock(
+            return_value=Response(200, json=sample_chat_search_response)
+        )
+        mock_api.post("im.search.user.list").mock(
+            return_value=Response(200, json=sample_chat_user_search_response)
+        )
+        found = await _chat_search("release")
+        dialog_id = found["directChats"][0]["dialogId"]
+
+        mock_api.post("im.dialog.get").mock(
+            return_value=Response(200, json=sample_chat_dialog_response)
+        )
+        mock_api.post("im.dialog.messages.get").mock(
+            return_value=Response(200, json=sample_chat_messages_response)
+        )
+        history = await _chat_get(dialog_id)
+        reply_to = history["messages"][0]["messageId"]
+
+        mock_api.post("im.message.add").mock(return_value=Response(200, json={"result": 84901}))
+        sent = await _chat_send(dialog_id, "Approved", replyToMessageId=reply_to)
+
+        assert sent == {"dialogId": "103", "messageId": 84901, "sent": True}
+
+    @pytest.mark.asyncio
+    async def test_task_search_get_chat_send(
+        self,
+        setup_integration,
+        sample_task_list_response,
+        sample_task_get_response,
+        sample_chat_dialog_response,
+        sample_chat_messages_response,
+    ):
+        """A remembered task word should lead to reading and sending in its task chat."""
+        mock_api = setup_integration
+        mock_api.post("tasks.task.list").mock(
+            return_value=Response(200, json=sample_task_list_response)
+        )
+        task_id = (await _task_search("welcome"))[0]["id"]
+
+        mock_api.post("tasks.task.get").mock(
+            return_value=Response(200, json=sample_task_get_response)
+        )
+        mock_api.post("im.dialog.get").mock(
+            return_value=Response(200, json=sample_chat_dialog_response)
+        )
+        mock_api.post("im.dialog.messages.get").mock(
+            return_value=Response(200, json=sample_chat_messages_response)
+        )
+        history = await _task_chat_get(task_id)
+        assert history["dialog"]["dialogId"] == "chat1439"
+
+        mock_api.post(
+            "https://test.bitrix24.com/rest/api/1/test-token/tasks.task.chat.message.send"
+        ).mock(return_value=Response(200, json={"result": {"result": True}}))
+        sent = await _task_chat_send(task_id, "Welcome task reviewed")
+        assert sent == {"taskId": 456, "sent": True}
 
 
 class TestWorkflowSearchAndGet:

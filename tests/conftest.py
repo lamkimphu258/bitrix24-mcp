@@ -64,7 +64,105 @@ def sample_task_get_response() -> dict:
                 "parentId": None,
                 "priority": "1",
                 "ufTaskWebdavFiles": [1065, 1077],
+                "chatId": 1439,
             }
+        }
+    }
+
+
+@pytest.fixture
+def sample_chat_search_response() -> dict:
+    """Return the documented im.search.chat.list response shape."""
+    return {
+        "result": [
+            {
+                "id": 1439,
+                "name": "Release planning",
+                "type": "chat",
+                "counter": 2,
+                "user_counter": 4,
+                "message_count": 31,
+                "entity_type": "",
+                "entity_id": "",
+            }
+        ],
+        "total": 12,
+        "next": 15,
+    }
+
+
+@pytest.fixture
+def sample_chat_user_search_response() -> dict:
+    """Return the documented keyed im.search.user.list response shape."""
+    return {
+        "result": {
+            "103": {
+                "id": 103,
+                "name": "Emily Smith",
+                "first_name": "Emily",
+                "last_name": "Smith",
+                "work_position": "Engineering Manager",
+            }
+        },
+        "total": 3,
+        "next": 25,
+    }
+
+
+@pytest.fixture
+def sample_chat_dialog_response() -> dict:
+    """Return sample im.dialog.get data."""
+    return {
+        "result": {
+            "id": 1439,
+            "name": "Release planning",
+            "type": "chat",
+            "counter": 1,
+            "user_counter": 4,
+            "message_count": 31,
+            "entity_type": "",
+            "entity_id": "",
+        }
+    }
+
+
+@pytest.fixture
+def sample_chat_messages_response() -> dict:
+    """Return sample im.dialog.messages.get data with an attachment."""
+    return {
+        "result": {
+            "chat_id": 1439,
+            "messages": [
+                {
+                    "id": 84877,
+                    "chat_id": 1439,
+                    "author_id": 103,
+                    "date": "2026-03-04T09:43:26+03:00",
+                    "text": "The release is ready.",
+                    "unread": True,
+                    "params": {"FILE_ID": [5255]},
+                },
+                {
+                    "id": 84875,
+                    "chat_id": 1439,
+                    "author_id": 103,
+                    "date": "2026-03-04T09:43:21+03:00",
+                    "text": "Please review.",
+                    "unread": False,
+                    "params": [],
+                },
+            ],
+            "users": [{"id": 103, "name": "Emily Smith"}],
+            "files": [
+                {
+                    "id": 5255,
+                    "type": "file",
+                    "name": "release.txt",
+                    "size": 42,
+                    "authorId": 103,
+                    "urlDownload": "https://test.bitrix24.com/download/5255",
+                }
+            ],
         }
     }
 

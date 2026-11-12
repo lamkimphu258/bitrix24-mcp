@@ -7,6 +7,9 @@ from bitrix_mcp import server
 from bitrix_mcp.bitrix.client import Bitrix24Client
 from bitrix_mcp.bitrix.types import BitrixConnectionError
 from bitrix_mcp.server import (
+    _chat_get,
+    _chat_search,
+    _chat_send,
     _crm_deal_add,
     _crm_deal_delete,
     _crm_deal_fields,
@@ -26,6 +29,8 @@ from bitrix_mcp.server import (
     _scrum_task_create,
     _scrum_task_get,
     _scrum_task_update,
+    _task_chat_get,
+    _task_chat_send,
     _task_comment_add,
     _task_create,
     _task_get,
@@ -45,6 +50,193 @@ def setup_client(mock_webhook_url, mock_bitrix_api):
     client = Bitrix24Client(webhook_url=mock_webhook_url)
     set_client(client)
     yield client
+
+
+class TestChatTools:
+    """Tests for regular-chat and task-chat MCP functions."""
+
+    @pytest.mark.asyncio
+    async def test_chat_search(
+        self,
+        setup_client,
+        mock_bitrix_api,
+        sample_chat_search_response,
+        sample_chat_user_search_response,
+    ):
+        """chat_search should combine group and direct results."""
+        mock_bitrix_api.post("im.search.chat.list").mock(
+            return_value=Response(200, json=sample_chat_search_response)
+        )
+        mock_bitrix_api.post("im.search.user.list").mock(
+            return_value=Response(200, json=sample_chat_user_search_response)
+        )
+
+        result = await _chat_search("release", chatOffset=10, userOffset=20)
+
+        assert result["groupChats"][0]["name"] == "Release planning"
+        assert result["directChats"][0]["name"] == "Emily Smith"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"query": "x"}, "at least 2"),
+            ({"query": "valid", "limit": 51}, "between 1 and 50"),
+            ({"query": "valid", "chatOffset": -1}, "0 or greater"),
+        ],
+    )
+    async def test_chat_search_validation_makes_no_calls(
+        self, setup_client, mock_bitrix_api, kwargs, message
+    ):
+        """Invalid search inputs should fail before any HTTP request."""
+        with pytest.raises(RuntimeError, match=message):
+            await _chat_search(**kwargs)
+        assert mock_bitrix_api.calls.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_chat_get_with_first_cursor(
+        self,
+        setup_client,
+        mock_bitrix_api,
+        sample_chat_dialog_response,
+        sample_chat_messages_response,
+    ):
+        """chat_get should read a selected chat with a newer-message cursor."""
+        mock_bitrix_api.post("im.dialog.get").mock(
+            return_value=Response(200, json=sample_chat_dialog_response)
+        )
+        mock_bitrix_api.post("im.dialog.messages.get").mock(
+            return_value=Response(200, json=sample_chat_messages_response)
+        )
+
+        result = await _chat_get("chat1439", firstId=84800)
+
+        assert result["messages"][0]["messageId"] == 84877
+        assert result["newerCursor"] == 84877
+
+    @pytest.mark.asyncio
+    async def test_chat_get_rejects_two_cursors_without_calling_api(
+        self, setup_client, mock_bitrix_api
+    ):
+        """Only one cursor direction may be requested at a time."""
+        with pytest.raises(RuntimeError, match="only one cursor"):
+            await _chat_get("chat1439", lastId=10, firstId=20)
+        assert mock_bitrix_api.calls.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_chat_send_returns_actual_message_id(self, setup_client, mock_bitrix_api):
+        """chat_send should report the ID returned by im.message.add."""
+        mock_bitrix_api.post("im.message.add").mock(
+            return_value=Response(200, json={"result": "84901"})
+        )
+        result = await _chat_send("103", "Hello", replyToMessageId=84877)
+        assert result == {"dialogId": "103", "messageId": 84901, "sent": True}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("dialog_id", "normalized"), [(103, "103"), ("sg17", "sg17")])
+    async def test_chat_get_and_send_support_direct_and_group_dialog_ids(
+        self,
+        setup_client,
+        mock_bitrix_api,
+        sample_chat_dialog_response,
+        sample_chat_messages_response,
+        dialog_id,
+        normalized,
+    ):
+        """Numeric direct-message and sgNN dialog IDs should work end to end."""
+        mock_bitrix_api.post("im.dialog.get").mock(
+            return_value=Response(200, json=sample_chat_dialog_response)
+        )
+        mock_bitrix_api.post("im.dialog.messages.get").mock(
+            return_value=Response(200, json=sample_chat_messages_response)
+        )
+        mock_bitrix_api.post("im.message.add").mock(
+            return_value=Response(200, json={"result": 84901})
+        )
+
+        history = await _chat_get(dialog_id)
+        sent = await _chat_send(dialog_id, "Hello")
+
+        assert history["dialog"]["dialogId"] == normalized
+        assert sent == {"dialogId": normalized, "messageId": 84901, "sent": True}
+
+    @pytest.mark.asyncio
+    async def test_chat_send_wraps_invalid_api_message_id(self, setup_client, mock_bitrix_api):
+        """Invalid API message IDs should surface as a friendly tool error."""
+        mock_bitrix_api.post("im.message.add").mock(
+            return_value=Response(200, json={"result": False})
+        )
+        with pytest.raises(RuntimeError, match="Unexpected response format"):
+            await _chat_send("103", "Hello")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("dialog_id", "message"),
+        [("bad-id", "dialogId"), ("chat0", "dialogId")],
+    )
+    async def test_chat_send_rejects_invalid_dialog_without_calling_api(
+        self, setup_client, mock_bitrix_api, dialog_id, message
+    ):
+        """Malformed dialog IDs should be rejected locally."""
+        with pytest.raises(RuntimeError, match=message):
+            await _chat_send(dialog_id, "Hello")
+        assert mock_bitrix_api.calls.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_task_chat_get_resolves_task_chat(
+        self,
+        setup_client,
+        mock_bitrix_api,
+        sample_task_get_response,
+        sample_chat_dialog_response,
+        sample_chat_messages_response,
+    ):
+        """task_chat_get should resolve CHAT_ID then read the shared history path."""
+        mock_bitrix_api.post("tasks.task.get").mock(
+            return_value=Response(200, json=sample_task_get_response)
+        )
+        mock_bitrix_api.post("im.dialog.get").mock(
+            return_value=Response(200, json=sample_chat_dialog_response)
+        )
+        mock_bitrix_api.post("im.dialog.messages.get").mock(
+            return_value=Response(200, json=sample_chat_messages_response)
+        )
+
+        result = await _task_chat_get(456)
+
+        assert result["taskId"] == 456
+        assert result["dialog"]["dialogId"] == "chat1439"
+
+    @pytest.mark.asyncio
+    async def test_task_chat_get_missing_chat(self, setup_client, mock_bitrix_api):
+        """A task without CHAT_ID should return a clear tool error."""
+        mock_bitrix_api.post("tasks.task.get").mock(
+            return_value=Response(
+                200,
+                json={
+                    "result": {
+                        "task": {
+                            "id": "456",
+                            "title": "Legacy task",
+                            "status": "2",
+                        }
+                    }
+                },
+            )
+        )
+        with pytest.raises(RuntimeError, match="does not have an accessible chat"):
+            await _task_chat_get(456)
+
+    @pytest.mark.asyncio
+    async def test_task_chat_send(self, setup_client, mock_bitrix_api):
+        """task_chat_send should report success without inventing a message ID."""
+        mock_bitrix_api.post(
+            "https://test.bitrix24.com/rest/api/1/test-token/tasks.task.chat.message.send"
+        ).mock(return_value=Response(200, json={"result": {"result": True}}))
+
+        result = await _task_chat_send(456, "Ready for QA")
+
+        assert result == {"taskId": 456, "sent": True}
 
 
 class TestTaskSearch:
